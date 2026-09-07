@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Spectra Wake-Word Audio Collection</title>
+<style>
+  :root {
+    --bg: #0b0f1a;
+    --bg2: #111728;
+    --card: rgba(255, 255, 255, 0.045);
+    --card-border: rgba(255, 255, 255, 0.10);
+    --ink: #eef2ff;
+    --muted: #97a3c3;
+    --accent: #7c5cff;
+    --accent2: #2dd4bf;
+    --pink: #f472b6;
+    --amber: #fbbf24;
+    --green: #34d399;
+    --red: #f87171;
+    --radius: 16px;
+    --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, rgba(124, 92, 255, 0.22), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(45, 212, 191, 0.16), transparent 60%),
+      var(--bg);
+    color: var(--ink);
+    min-height: 100%;
+    line-height: 1.5;
+  }
+
+  .wrap { max-width: 720px; margin: 0 auto; padding: 18px 16px 60px; }
+  /* ── Header ── */
+  header { display: flex; align-items: center; gap: 14px; margin: 6px 0 18px; }
+
+  .orb {
+    width: 46px; height: 46px; flex: 0 0 46px; border-radius: 50%;
+    background: conic-gradient(from 0deg, #7c5cff, #2dd4bf, #f472b6, #fbbf24, #7c5cff);
+    box-shadow: 0 0 24px rgba(124, 92, 255, 0.55);
+    animation: spin 14s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  header h1 { font-size: 1.35rem; letter-spacing: 0.2px; }
+
+  header p { color: var(--muted); font-size: 0.85rem; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(124, 92, 255, 0.16); border: 1px solid rgba(124, 92, 255, 0.4);
+    color: #cdbfff; font-size: 0.7rem; font-weight: 600; letter-spacing: 1.2px;
+    padding: 4px 10px; border-radius: 999px; margin-top: 6px;
+  }
+
+  /* ── Cards / sections ── */
+  .card {
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: var(--radius); padding: 20px 18px; margin-bottom: 14px;
+    box-shadow: var(--shadow);
+  }
+
+  .step-chip { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+
+  .chip {
+    flex: 1 1 0; min-width: 88px; text-align: center; font-size: 0.72rem; font-weight: 600;
+    padding: 7px 4px; border-radius: 10px; border: 1px solid var(--card-border);
+    background: rgba(255,255,255,0.03); color: var(--muted); cursor: default;
+    transition: all .2s ease;
+  }
+
+  .chip.done { background: rgba(52, 211, 153, 0.12); border-color: rgba(52, 211, 153, 0.4); color: var(--green); cursor: pointer; }
+
+  .chip.active { background: rgba(124, 92, 255, 0.2); border-color: var(--accent); color: #fff; }
+
+  h2 { font-size: 1.05rem; margin-bottom: 6px; }
+  h3 { font-size: 1rem; }
+  .hint { color: var(--muted); font-size: 0.88rem; }
+  .small { color: var(--muted); font-size: 0.78rem; }
+  .cons { color: var(--accent2); font-weight: 600; }
+  .rule { height: 1px; background: var(--card-border); border: 0; margin: 14px 0; }
+
+  /* ── Form controls ── */
+  label.q { display: block; margin-bottom: 12px; }
+  label.q .q-title { display: block; font-weight: 600; font-size: 0.95rem; margin-bottom: 2px; }
+  label.q .q-help { display: block; color: var(--muted); font-size: 0.78rem; margin-bottom: 6px; }
+  .opt-group { display: flex; flex-wrap: wrap; gap: 8px; }
+  .opt {
+    position: relative; cursor: pointer; user-select: none;
+    border: 1px solid var(--card-border); background: rgba(255,255,255,0.04);
+    border-radius: 12px; padding: 10px 14px; font-size: 0.9rem; transition: all .15s ease;
+  }
+  .opt input { position: absolute; opacity: 0; pointer-events: none; }
+  .opt.selected { background: rgba(124, 92, 255, 0.18); border-color: var(--accent); color: #fff; }
+  .opt.err { border-color: var(--red); }
+  .field-err { color: var(--red); font-size: 0.78rem; margin-top: 4px; display: none; }
+  .field-err.show { display: block; }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    border: 1px solid transparent; cursor: pointer; font-family: inherit; font-size: 0.95rem; font-weight: 600;
+    padding: 13px 22px; border-radius: 12px; transition: transform .08s ease, filter .2s ease, opacity .2s;
+    background: rgba(255,255,255,0.06); color: var(--ink);
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-primary { background: linear-gradient(90deg, #7c5cff, #6d6dff 55%, #2dd4bf); color: #fff; box-shadow: 0 8px 24px rgba(124,92,255,.35); }
+  .btn-danger { background: rgba(248, 113, 113, 0.14); border-color: rgba(248, 113, 113, 0.45); color: #fecaca; }
+  .btn-ghost { border-color: var(--card-border); }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .btn-row .spacer { flex: 1; }
+
+  /* ── Recorder ── */
+  .rec-stage {
+    text-align: center; border: 1px dashed rgba(255,255,255,0.22); border-radius: var(--radius);
+    padding: 22px 16px; margin: 8px 0 4px; background: rgba(0,0,0,0.22); position: relative; overflow: hidden;
+  }
+  .rec-stage.recording { border-color: var(--red); box-shadow: inset 0 0 60px rgba(248,113,113,0.08); }
+  .word-display { font-size: 2.6rem; font-weight: 800; letter-spacing: 6px; margin: 2px 0 12px; }
+  .word-display .glow { animation: wordGlow 1.2s ease-in-out infinite; }
+  @keyframes wordGlow { 0%,100% { text-shadow: 0 0 14px rgba(248,113,113,.0); } 50% { text-shadow: 0 0 26px rgba(248,113,113,.9); } }
+  .timer { font-variant-numeric: tabular-nums; font-size: 1.15rem; color: var(--ink); margin-bottom: 10px; }
+  canvas#meter { width: 100%; height: 46px; border-radius: 10px; background: rgba(0,0,0,0.45); }
+  .timing-bar { height: 6px; border-radius: 4px; background: rgba(255,255,255,0.08); margin: 12px 0 2px; overflow: hidden; }
+  .timing-fill { height: 100%; width: 0%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .timing-cap { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
+  .rec-state { margin-top: 10px; min-height: 22px; font-size: 0.85rem; color: var(--muted); }
+  .rec-state.warn { color: var(--amber); }
+  .rec-state.bad  { color: var(--red); }
+  .rec-state.good { color: var(--green); }
+
+  audio.preview { width: 100%; margin-top: 10px; }
+  .upload-box { margin-top: 12px; }
+  .upload-box input[type=file] { width: 100%; }
+  .alt-note { font-size: 0.78rem; color: var(--muted); margin-top: 8px; text-align: center; }
+
+  /* ── Result list / downloads ── */
+  .clip-card { border: 1px solid var(--card-border); border-radius: 12px; padding: 12px; margin-bottom: 10px; background: rgba(255,255,255,0.03); }
+  .clip-card .row1 { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .clip-card .fname { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; color: #c7d2fe; word-break: break-all; }
+  .clip-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .dl { font-size: 0.8rem; padding: 8px 12px; border-radius: 9px; background: rgba(124,92,255,0.14); border: 1px solid rgba(124,92,255,0.35); color: #ddd6fe; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  .dl:hover { filter: brightness(1.2); }
+  .meta-tag { font-size: 0.7rem; color: var(--muted); background: rgba(255,255,255,0.05); border-radius: 6px; padding: 2px 8px; margin-left: 6px; }
+
+  footer { text-align: center; color: var(--muted); font-size: 0.75rem; margin-top: 26px; }
+  .hidden { display: none !important; }
+  .fade-in { animation: fadeIn .35s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .spinner {
+    width: 15px; height: 15px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; display: inline-block;
+    animation: spin .8s linear infinite;
+  }
+  .hero { padding: 30px 22px !important; position: relative; overflow: hidden; }
+  .hero::before {
+    content: ""; position: absolute; inset: -40% -20% auto auto; width: 320px; height: 320px;
+    background: radial-gradient(circle, rgba(124,92,255,.35), transparent 65%);
+    pointer-events: none;
+  }
+  .hero h2 { font-size: 1.6rem; letter-spacing: .2px; }
+  .hero .sub { color: var(--muted); font-size: .95rem; margin-top: 8px; max-width: 46ch; }
+  .steptag {
+    display: inline-flex; align-items: center; gap: 6px; font-size: .68rem; font-weight: 700;
+    letter-spacing: 1.6px; color: #c7bfff; background: rgba(124,92,255,.14);
+    border: 1px solid rgba(124,92,255,.35); border-radius: 999px; padding: 4px 11px; margin-bottom: 12px;
+  }
+  .how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0 6px; }
+  .how-item {
+    background: rgba(255,255,255,.04); border: 1px solid var(--card-border); border-radius: 14px;
+    padding: 12px 11px;
+  }
+  .how-item b { display: flex; align-items: center; gap: 7px; font-size: .88rem; }
+  .how-item .n {
+    display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+    border-radius: 50%; background: linear-gradient(135deg, #7c5cff, #2dd4bf); color: #fff;
+    font-size: .68rem; font-weight: 800; flex: 0 0 20px;
+  }
+  .how-item span { display: block; color: var(--muted); font-size: .74rem; line-height: 1.45; margin-top: 6px; }
+  .big-cta { width: 100%; padding: 16px; font-size: 1.05rem; margin-top: 18px; }
+  .ok-list { list-style: none; display: grid; gap: 8px; margin-top: 14px; }
+  .ok-list li { display: flex; gap: 9px; align-items: flex-start; color: var(--muted); font-size: .88rem; }
+  .ok-list li::before { content: "✔"; color: var(--green); flex: 0 0 auto; font-weight: 700; }
+  .consent-panel {
+    background: rgba(124,92,255,.08); border: 1px solid rgba(124,92,255,.28);
+    border-radius: 14px; padding: 14px 13px; margin: 4px 0 14px;
+  }
+  .opt { padding: 13px 15px; border-radius: 13px; font-size: .92rem; }
+  .opt:hover { border-color: rgba(124,92,255,.55); }
+  .opt:focus-within { outline: 2px solid rgba(124,92,255,.5); outline-offset: 1px; }
+  .opt.selected::after {
+    content: "✓"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    color: #fff; font-weight: 800;
+  }
+  .opt.selected { padding-right: 34px; }
+  .cd-overlay {
+    position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 12px;
+    background: rgba(6,8,16,.9); backdrop-filter: blur(3px); border-radius: inherit;
+  }
+  .cd-num {
+    font-size: 4.8rem; font-weight: 800; line-height: 1; color: #fff;
+    background: linear-gradient(120deg, #a78bfa, #7c5cff 45%, #2dd4bf);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    animation: cdPop .85s ease;
+  }
+  .cd-label { color: var(--muted); font-size: .9rem; font-weight: 600; letter-spacing: .3px; }
+  @keyframes cdPop { 0% { transform: scale(1.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  .shake { animation: shake .4s ease; }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); } 20% { transform: translateX(-7px); }
+    40% { transform: translateX(7px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(4px); }
+  }
+  .wav-badge {
+    display: inline-flex; align-items: center; gap: 5px; font-size: .68rem; font-weight: 700;
+    letter-spacing: .8px; color: #99f6e4; background: rgba(45,212,191,.12);
+    border: 1px solid rgba(45,212,191,.35); border-radius: 999px; padding: 3px 9px; margin-left: 8px;
+    vertical-align: 2px;
+  }
+  @media (max-width: 460px) {
+    .word-display { font-size: 2rem; letter-spacing: 4px; }
+    .how-grid { grid-template-columns: 1fr; }
+    .cd-num { font-size: 3.8rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="orb"></div>
+    <div>
+      <h1>Spectra Wake-Word Audio Collection</h1>
+      <p>AI research · ~3 minutes · anonymous</p>
+      <span class="pill">SAY: &ldquo;SPECTRA&rdquo;</span>
+    </div>
+  </header>
+
+  <!-- ───────────── WELCOME (STEP 0) ───────────── -->
+  <section id="view-welcome" class="fade-in">
+    <div class="card hero">
+      <h2>Your voice trains the wake-word model 🎙️</h2>
+      <p class="sub">We are building a wake-word detection model that responds when it hears the word <b>&ldquo;Spectra&rdquo;</b>. You&rsquo;ll say it just <b>4 times</b>, in everyday conditions &mdash; that&rsquo;s all it takes to make the model hear real voices, not studio voices.</p>
+
+      <div class="how-grid">
+        <div class="how-item"><b><span class="n">1</span> Record</b><span>Say &ldquo;Spectra&rdquo; once per take &mdash; 4 short recordings, about 3 minutes total.</span></div>
+        <div class="how-item"><b><span class="n">2</span> Convert</b><span>Every clip is automatically stored as a clean 16-bit <b>.wav</b> file for the dataset.</span></div>
+        <div class="how-item"><b><span class="n">3</span> Submit</b><span>One tap sends your clips + metadata to the dataset &mdash; or download them yourself.</span></div>
+      </div>
+
+      <ul class="ok-list">
+        <li>Say only the word &ldquo;Spectra&rdquo; &mdash; no &ldquo;hey&rdquo;, no sentences, no counting in.</li>
+        <li>Use your natural voice &mdash; no shouting, whispering or &ldquo;announcing&rdquo;.</li>
+        <li>Everyday background noise is welcome &mdash; we want real conditions.</li>
+        <li>Flub a take? Just record again &mdash; quality checks help you catch issues.</li>
+      </ul>
+
+      <button class="btn btn-primary big-cta" onclick="go('demographics')">Start &mdash; it takes ~3 minutes &rarr;</button>
+    </div>
+    <footer>Recordings are used solely for training &amp; evaluating the model and are never linked to your identity. · This page listens <b>only while a recording is active</b>, and <b>no audio is sent anywhere unless you press &ldquo;Submit session to dataset&rdquo;</b> on the final screen.</footer>
+  </section>
+
+  <!-- ───────────── DEMOGRAPHICS + CONSENT (STEP 0) ───────────── -->
+  <section id="view-demographics" class="hidden">
+    <div class="card">
+      <span class="steptag">STEP 0 &middot; ABOUT YOU &middot; 30 SECONDS</span>
+      <h2>About you <span class="small">(aggregate stats only)</span></h2>
+      <p class="hint" style="margin-bottom:12px">Four quick questions &mdash; they let us keep the dataset balanced across voices, ages and devices. Nothing is linked to your identity.</p>
+
+      <label class="q">
+        <span class="q-title">Gender *</span>
+        <span class="q-help">Used only to balance the dataset across speaker groups.</span>
+        <div class="opt-group" data-q="gender" data-required="1">
+          <label class="opt"><input type="radio" name="gender" value="Male"><span>Male</span></label>
+          <label class="opt"><input type="radio" name="gender" value="Female"><span>Female</span></label>
+          <label class="opt"><input type="radio" name="gender" value="Prefer not to say"><span>Prefer not to say</span></label>
+          <label class="opt"><input type="radio" name="gender" value="Other"><span>Other</span></label>
+        </div>
+        <span class="field-err" data-err-for="gender">Please select an option.</span>
+      </label>
+
+      <label class="q">
+        <span class="q-title">Recording environment *</span>
+        <span class="q-help">Where are you right now?</span>
+        <div class="opt-group" data-q="environment" data-required="1">
+          <label class="opt"><input type="radio" name="env" value="Quiet Room"><span>Quiet Room</span></label>
+          <label class="opt"><input type="radio" name="env" value="Background Noise/TV"><span>Background Noise / TV</span></label>
+          <label class="opt"><input type="radio" name="env" value="Outdoors"><span>Outdoors</span></label>
+        </div>
+        <span class="field-err" data-err-for="environment">Please select an option.</span>
+      </label>
+
+      <label class="q">
+        <span class="q-title">Age group (optional)</span>
+        <span class="q-help">If you are under 18, please ask a parent or guardian to submit for you.</span>
+        <div class="opt-group" data-q="age_group">
+          <label class="opt"><input type="radio" name="age" value="18-24"><span>18&ndash;24</span></label>
+          <label class="opt"><input type="radio" name="age" value="25-34"><span>25&ndash;34</span></label>
+          <label class="opt"><input type="radio" name="age" value="35-44"><span>35&ndash;44</span></label>
+          <label class="opt"><input type="radio" name="age" value="45-59"><span>45&ndash;59</span></label>
+          <label class="opt"><input type="radio" name="age" value="60+"><span>60 or older</span></label>
+          <label class="opt"><input type="radio" name="age" value="Prefer not to say"><span>Prefer not to say</span></label>
+        </div>
+      </label>
+
+      <label class="q">
+        <span class="q-title">What are you recording with? (optional)</span>
+        <span class="q-help">Helps us characterise microphone / codec diversity.</span>
+        <div class="opt-group" data-q="device">
+          <label class="opt"><input type="radio" name="dev" value="Android phone"><span>Android phone</span></label>
+          <label class="opt"><input type="radio" name="dev" value="iPhone"><span>iPhone</span></label>
+          <label class="opt"><input type="radio" name="dev" value="Tablet"><span>Tablet</span></label>
+          <label class="opt"><input type="radio" name="dev" value="Laptop / desktop microphone"><span>Laptop / desktop mic</span></label>
+          <label class="opt"><input type="radio" name="dev" value="Other"><span>Other</span></label>
+        </div>
+      </label>
+
+      <div class="consent-panel">
+        <label class="q" style="margin-bottom:0">
+          <span class="q-title">Consent *</span>
+          <span class="q-help">Your audio is stored anonymously and used only to train/evaluate the model. It will never be linked to your identity. Choosing &ldquo;No&rdquo; stops here &mdash; nothing is recorded.</span>
+          <div class="opt-group" data-q="consent" data-required="1">
+            <label class="opt"><input type="radio" name="consent" value="Yes"><span>Yes &mdash; my recordings may be used (anonymously) for AI training &amp; research</span></label>
+            <label class="opt"><input type="radio" name="consent" value="No"><span>No &mdash; I do not consent</span></label>
+          </div>
+          <span class="field-err" data-err-for="consent">Please answer to continue.</span>
+        </label>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="go('welcome')">&larr; Back</button>
+        <span class="spacer"></span>
+        <button class="btn btn-primary" onclick="submitDemographics()">Continue &rarr;</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── DECLINED ───────────── -->
+  <section id="view-declined" class="hidden">
+    <div class="card fade-in">
+      <h2>Thank you for considering 🙏</h2>
+      <p class="hint" style="margin-top:8px">You chose not to consent, so <b>nothing was recorded or saved</b>. If you change your mind, press below to start over &mdash; otherwise you can close this tab.</p>
+      <div class="btn-row">
+        <span class="spacer"></span>
+        <button class="btn btn-primary" onclick="go('demographics')">Restart consent &rarr;</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── RECORDING STEPS (1–4) ───────────── -->
+  <section id="view-record" class="hidden">
+    <div class="step-chip" id="chips"></div>
+
+    <div class="card">
+      <span class="steptag" id="rec-steptag"></span>
+      <span class="cons" id="rec-constraint-tag"></span>
+      <h2 id="rec-title"></h2>
+      <p class="hint" id="rec-help"></p>
+      <p class="small" style="margin-top:6px">Why these conditions? Real wake-words get spoken quickly or lazily, close to a phone or across a room — all four make the model hear &ldquo;Spectra&rdquo; in real life, not just in a studio.</p>
+
+      <div class="rec-stage" id="rec-stage">
+        <div class="word-display" id="word-display"><span class="glow" id="word-glow">SPECTRA</span></div>
+        <div class="timer" id="timer">0.00 s</div>
+        <canvas id="meter" width="640" height="46"></canvas>
+        <div class="timing-bar"><div class="timing-fill" id="timing-fill"></div></div>
+        <div class="timing-cap"><span>ideal window: <span id="target-label"></span></span><span id="clip-count"></span></div>
+        <div class="cd-overlay hidden" id="cd-overlay" aria-live="assertive">
+          <div class="cd-num" id="cd-num">3</div>
+          <div class="cd-label">get ready &hellip; speak after the beep</div>
+        </div>
+      </div>
+
+      <div class="btn-row" id="rec-cta-row">
+        <button class="btn btn-primary" id="btn-record" onclick="toggleRecording()">● Record</button>
+        <button class="btn btn-danger hidden" id="btn-stop" onclick="stopRecording()">■ Stop</button>
+        <button class="btn btn-ghost" id="btn-retry" onclick="retryClip()" disabled>↺ Redo</button>
+        <span class="spacer"></span>
+        <button class="btn btn-primary" id="btn-next" onclick="nextStep()" disabled>Next &rarr;</button>
+      </div>
+      <div class="rec-state" id="rec-state"></div>
+
+      <audio id="preview" class="preview hidden" controls></audio>
+
+      <div class="upload-box">
+        <label class="btn btn-ghost" style="width:100%" for="file-input">📁 or upload an existing audio file instead</label>
+        <input type="file" id="file-input" accept="audio/*" class="hidden" />
+        <div class="alt-note" id="upload-note"></div>
+      </div>
+    </div>
+
+    <div class="btn-row" style="margin-top:0">
+      <button class="btn btn-ghost" id="btn-prev-step" onclick="prevStep()">&larr; Previous</button>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost" id="btn-exit" onclick="confirmExit()">✕ Exit session</button>
+    </div>
+  </section>
+
+  <!-- ───────────── DONE / EXPORT ───────────── -->
+  <section id="view-done" class="hidden">
+    <div class="card fade-in">
+      <h2>All done — thank you! 🎉</h2>
+      <p class="hint" style="margin-top:6px">4 recordings captured for session <span id="session-id" style="font-family:ui-monospace,monospace;color:#c7d2fe"></span>.</p>
+
+      <div id="submit-wrap" style="margin-top:14px">
+        <button class="btn btn-primary" id="btn-submit" onclick="submitSession()">☁ Submit session to dataset</button>
+        <div class="rec-state" id="submit-state"></div>
+        <p class="small" id="submit-note" style="margin-top:6px"></p>
+      </div>
+      <hr class="rule" />
+      <h3>Your clips — stored as 16-bit WAV <span class="wav-badge">WAV &middot; 16-BIT PCM</span></h3>
+      <p class="small" style="margin:4px 0 8px">All 4 recordings are converted to a uniform <b>.wav</b> format for the dataset &mdash; every download, the ZIP and the server submission below use these files.</p>
+      <div class="rec-state" id="wav-state"></div>
+      <div id="clip-list" style="margin-top:6px"></div>
+      <hr class="rule" />
+      <h3>Download dataset files</h3>
+      <p class="small" style="margin:4px 0 10px">The manifest (<code style="color:#c7d2fe">.json</code>) carries the metadata; the CSV summary mirrors the Google Form columns so both channels merge cleanly.</p>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btn-json" onclick="downloadManifest()">⬇ Manifest (.json)</button>
+        <button class="btn btn-ghost" id="btn-csv" onclick="downloadCsv()">⬇ Summary (.csv)</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-zip" onclick="downloadAllZip()">⬇ Download everything — 4 × .wav (.zip)</button>
+      </div>
+      <div class="rec-state" id="zip-state"></div>
+      <div class="btn-row">
+        <span class="spacer"></span>
+        <button class="btn btn-ghost" onclick="startNewSession()">＋ New session (same device)</button>
+      </div>
+    </div>
+    <footer>Tip: keep one folder per session (e.g. <code>Spectra-Dataset/raw/SESSION-ID/</code>) so clips and manifest travel together.</footer>
+  </section>
+
+  <!-- ───────────── UNSUPPORTED NOTE ───────────── -->
+  <div id="unsupported" class="hidden card" style="border-color:rgba(248,113,113,.4)">
+    <h2 style="color:#fecaca">⚠️ In-browser recording is unavailable here</h2>
+    <p class="hint" style="margin-top:6px">This browser doesn't expose a microphone API (or you denied permission). You can still contribute using the <b>upload an existing audio file</b> option on each step.</p>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════
+   CONFIG — keep in sync with createSpectraWakeWordForm.gs CONFIG
+   ═══════════════════════════════════════════════════════════════════ */
+var WAKE_WORD = "Spectra";
+
+/* ── OPTIONAL SERVER SUBMISSION (Option B) ────────────────────────────
+   Leave WEBAPP_URL empty to disable the "Submit session" button
+   (downloads-only mode). Deploy webAppReceiver.gs first — see its
+   header comment — then paste its /exec URL and matching secret here. */
+var WEBAPP_URL = "";     // e.g. "https://script.google.com/macros/s/XXXXXXX/exec"
+var API_TOKEN = "change-me-to-a-long-random-string-of-40-plus-chars";
+
+var CONSTRAINTS = [
+  { title: "Constraint 1: Speak SLOWLY (~1.25 seconds) and hold the phone NEAR your mouth.",
+    tag: "slow · near", speed: "slow", distance: "near", target: 1.25, range: [0.80, 2.20],
+    help: "Record yourself saying \u201cSpectra\u201d exactly ONCE, speaking SLOWLY — about 1.25 seconds per word — while holding the phone close to your mouth (about 10 cm / 4 in). Use a natural volume." },
+  { title: "Constraint 2: Speak FAST (~0.75 seconds) and hold the phone FAR from your mouth.",
+    tag: "fast · far", speed: "fast", distance: "far", target: 0.75, range: [0.50, 1.50],
+    help: "Record yourself saying \u201cSpectra\u201d exactly ONCE, speaking QUICKLY — about 0.75 seconds per word — while holding the phone at arm's length (about 50 cm / 20 in). Use a natural volume." },
+  { title: "Constraint 3: Speak SLOWLY (~1.25 seconds) and hold the phone FAR from your mouth.",
+    tag: "slow · far", speed: "slow", distance: "far", target: 1.25, range: [0.80, 2.20],
+    help: "Record yourself saying \u201cSpectra\u201d exactly ONCE, speaking SLOWLY — about 1.25 seconds per word — while holding the phone at arm's length (about 50 cm / 20 in). Use a natural volume." },
+  { title: "Constraint 4: Speak FAST (~0.75 seconds) and hold the phone NEAR your mouth.",
+    tag: "fast · near", speed: "fast", distance: "near", target: 0.75, range: [0.50, 1.50],
+    help: "Record yourself saying \u201cSpectra\u201d exactly ONCE, speaking QUICKLY — about 0.75 seconds per word — while holding the phone close to your mouth (about 10 cm / 4 in). Use a natural volume." }
+];
+
+/* Session state */
+var S = {
+  step: 0,               // 0..3  (index into CONSTRAINTS)
+  recordings: [],        // one entry per constraint, null if not yet done
+  gender: null, environment: null, ageGroup: null, device: null, consent: false,
+  sessionId: null, tsIso: null, startedAt: null, submitted: false
+};
+
+/* Recorder runtime */
+var R = { stream: null, mediaRecorder: null, chunks: [], audioCtx: null, analyser: null,
+          startTs: 0, rafId: 0, timerId: 0, cdId: 0, cdVal: 3, rmsSqSum: 0, rmsFrames: 0,
+          recording: false, arming: false, wavCache: [] };
+
+/* Done-screen WAV storage state: every clip is converted to 16-bit PCM WAV
+   once Step 4 finishes, and all exports/submission serve those .wav files. */
+var D = { wavs: [null, null, null, null], failed: [], promise: null };
+
+var $ = function (id) { return document.getElementById(id); };
+var SUPPORTED = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+
+/* ═══════════════════════ VIEW NAVIGATION ═══════════════════════ */
+function go(view) {
+  ["welcome", "demographics", "declined", "record", "done"].forEach(function (v) {
+    $("view-" + v).classList.toggle("hidden", v !== view);
+  });
+  if (view === "record") renderStep();
+  window.scrollTo(0, 0);
+}
+function confirmExit() {
+  var live = R.recording || R.arming;
+  var done = S.recordings.some(Boolean);
+
+  if (!live && !done) {           // nothing started — leave freely
+    go("welcome");
+    return;
+  }
+  var msg = live && done
+    ? "You are mid-recording with saved clips. Leaving discards this take, and you must restart to submit."
+    : live
+      ? "A recording is in progress. Leaving now will discard it and switch the microphone off."
+      : "Leave without submitting? Your clips only reach the dataset from the final screen.";
+  if (confirm(msg)) {
+    stopMedia();                  // 🔒 always kill the mic when leaving mid-session
+    go("welcome");
+  }
+}
+
+/* ═══════════════════════ DEMOGRAPHICS ═══════════════════════ */
+/* tap-friendly option highlighting + validation */
+document.querySelectorAll(".opt-group").forEach(function (group) {
+  group.addEventListener("change", function () {
+    var chosen = group.querySelector("input:checked");
+    group.querySelectorAll(".opt").forEach(function (o) {
+      o.classList.toggle("selected", o.querySelector("input") === chosen);
+    });
+    var err = document.querySelector('[data-err-for="' + group.dataset.q + '"]');
+    if (err) err.classList.remove("show");
+  });
+});
+
+function fieldValue(q) {
+  var input = document.querySelector('.opt-group[data-q="' + q + '"] input:checked');
+  return input ? input.value : null;
+}
+function markError(q) {
+  var err = document.querySelector('[data-err-for="' + q + '"]');
+  if (err) err.classList.add("show");
+  var group = document.querySelector('.opt-group[data-q="' + q + '"]');
+  if (group) {
+    group.classList.remove("shake");
+    void group.offsetWidth;               // restart shake animation
+    group.classList.add("shake");
+  }
+}
+
+function submitDemographics() {
+  var ok = true;
+  ["gender", "environment", "consent"].forEach(function (q) {
+    if (!fieldValue(q)) { markError(q); ok = false; }
+  });
+  if (!ok) return;
+
+  S.gender = fieldValue("gender");
+  S.environment = fieldValue("environment");
+  S.ageGroup = fieldValue("age_group");
+  S.device = fieldValue("device");
+  S.consent = fieldValue("consent") === "Yes";
+  S.sessionId = "SPECTRA-" + Date.now().toString(36).toUpperCase();
+  S.tsIso = new Date().toISOString();
+  S.startedAt = Date.now();
+
+  if (!S.consent) { go("declined"); return; }
+  go("record");
+}
+
+/* ═══════════════════════ STEP RENDERER ═══════════════════════ */
+function renderStep() {
+  var c = CONSTRAINTS[S.step];
+  var done = S.recordings[S.step];
+
+  /* chips */
+  $("chips").innerHTML = CONSTRAINTS.map(function (c2, i) {
+    var cls = "chip";
+    if (i === S.step) cls += " active";
+    else if (S.recordings[i]) cls += " done";
+    return '<span class="' + cls + '" ' + (S.recordings[i] && i !== S.step ? 'onclick="jumpStep(' + i + ')"' : "") + ">Step " + (i + 1) + (S.recordings[i] ? " ✓" : "") + "</span>";
+  }).join("");
+
+  $("rec-steptag").textContent = "STEP " + (S.step + 1) + " OF 4 · RECORD";
+  $("rec-constraint-tag").textContent = c.tag.toUpperCase();
+  $("rec-title").textContent = c.title;
+  $("rec-help").textContent = c.help;
+  $("target-label").textContent = "~" + c.target.toFixed(2) + " s";
+
+  resetStage();
+  renderClipState(done);
+
+  /* navigation */
+  $("btn-prev-step").disabled = S.step === 0 && !S.recordings.some(Boolean);
+  if (!SUPPORTED) {
+    $("btn-record").disabled = true;
+    $("rec-state").innerHTML = "Recording unavailable — please use the file upload below.";
+  }
+}
+
+function jumpStep(i) { S.step = i; renderStep(); }
+function nextStep() {
+  if (!S.recordings[S.step]) { flash("Please record (or upload) clip " + (S.step + 1) + " first."); return; }
+  if (S.step < 3) { S.step++; renderStep(); }
+  else go("done"), renderDone();
+}
+function prevStep() { if (S.step > 0) { S.step--; renderStep(); } }
+
+/* Stage reset: stop everything, clear visuals, wire the right buttons */
+function resetStage() {
+  stopMedia();                    // idempotent
+  R.wavCache = [];
+  $("rec-stage").classList.remove("recording");
+  $("word-glow").classList.remove("glow");
+  $("timer").textContent = "0.00 s";
+  $("timing-fill").style.width = "0%";
+  drawMeter(null);
+  $("rec-state").textContent = "";
+  $("rec-state").className = "rec-state";
+  $("preview").pause();
+  $("preview").classList.add("hidden");
+  $("preview").removeAttribute("src");
+  $("preview").load();
+  $("btn-record").classList.remove("hidden");
+  $("btn-stop").classList.add("hidden");
+  $("file-input").value = "";
+  $("upload-note").textContent = "";
+}
+
+function renderClipState(rec) {
+  var has = !!rec;
+  $("btn-next").disabled = !has;
+  $("btn-retry").disabled = !has;
+  $("btn-record").textContent = has ? "● Record again" : "● Record";
+  if (has) {
+    $("preview").src = rec.url;
+    $("preview").classList.remove("hidden");
+    var warn = [];
+    if (rec.dur != null && (rec.dur < c_min(S.step) || rec.dur > c_max(S.step))) {
+      warn.push("duration " + rec.dur.toFixed(2) + " s is outside the ideal window (~" + CONSTRAINTS[S.step].target.toFixed(2) + " s) — consider redoing");
+    }
+    if (rec.rms != null && rec.rms < 0.004) {
+      warn.push("very quiet — we can barely hear it (is your mic covered?)");
+    }
+    $("rec-state").textContent = warn.length ? "⚠️ " + warn.join(". ") + "." : "✓ Clip captured — press Next when happy, or redo.";
+    $("rec-state").className = "rec-state " + (warn.length ? "warn" : "good");
+  }
+}
+function c_min(i) { return CONSTRAINTS[i].range[0]; }
+function c_max(i) { return CONSTRAINTS[i].range[1]; }
+function flash(msg) { $("rec-state").textContent = msg; $("rec-state").className = "rec-state warn"; }
+
+/* ═══════════════════════ RECORDING CORE ═══════════════════════ */
+function pickMime() {
+  var cands = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4;codecs=mp4a.40.2", "audio/mp4"];
+  for (var i = 0; i < cands.length; i++) if (MediaRecorder.isTypeSupported(cands[i])) return cands[i];
+  return "";
+}
+function extFor(mime) {
+  if (mime.indexOf("mp4") >= 0) return "m4a";
+  if (mime.indexOf("ogg") >= 0) return "ogg";
+  return "webm";
+}
+
+function toggleRecording() {
+  if (R.recording || R.arming) { stopRecording(); return; }
+  startRecording();
+}
+
+function startRecording() {
+  $("rec-state").className = "rec-state";
+  $("rec-state").textContent = "Requesting microphone…";
+  var constraints = { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } };
+  var attempt = function (cons) {
+    navigator.mediaDevices.getUserMedia(cons).then(beginCapture).catch(function (err) {
+      if (cons.audio !== true && err && err.name === "OverconstrainedError") {
+        attempt({ audio: true });   // device refuses processing flags — retry plain
+      } else {
+        $("rec-state").className = "rec-state bad";
+        $("rec-state").textContent = "Microphone error (" + (err && err.name ? err.name : err) + "). Check browser permissions, or use the file upload below.";
+        console.error(err);
+      }
+    });
+  };
+  attempt(constraints);
+
+  function beginCapture(stream) {
+    if (!SUPPORTED) return;
+    R.stream = stream;
+    var mime = pickMime();
+    try { R.mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); }
+    catch (e) { R.mediaRecorder = new MediaRecorder(stream); }
+    R.chunks = [];
+    R.mediaRecorder.ondataavailable = function (e) { if (e.data && e.data.size) R.chunks.push(e.data); };
+    R.mediaRecorder.onstop = onStop;
+    R.mediaRecorder.onerror = function (ev) {
+      var what = (ev && ev.error && (ev.error.name || ev.error.message)) || "recording error";
+      flash("⚠️ The browser stopped the recording (" + what + "). Please record again, or upload a file instead.");
+      stopMedia();
+    };
+
+    /* level meter — starts now so the user can check levels during the countdown */
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      R.audioCtx = new AC();
+      R.analyser = R.audioCtx.createAnalyser();
+      R.analyser.fftSize = 2048;
+      R.audioCtx.createMediaStreamSource(stream).connect(R.analyser);
+    } catch (e) { R.analyser = null; }
+
+    R.rafId = requestAnimationFrame(animateMeter);
+    beginArmCountdown();
+  }
+}
+
+/* ── 3-second countdown before every take (Steps 1–4) ── */
+function beginArmCountdown() {
+  R.arming = true;
+  R.cdVal = 3;
+  $("preview").pause();
+  $("file-input").disabled = true;
+  $("btn-record").classList.add("hidden");
+  $("btn-stop").classList.remove("hidden");
+  $("btn-stop").textContent = "✕ Cancel";
+  $("btn-next").disabled = true;
+  $("rec-state").className = "rec-state";
+  $("rec-state").textContent = "Get ready — recording starts in 3…";
+  showCd(3);
+  beep(520, 0.12);
+
+  clearInterval(R.cdId);
+  R.cdId = setInterval(function () {
+    R.cdVal--;
+    if (R.cdVal > 0) {
+      showCd(R.cdVal);
+      $("rec-state").textContent = "Get ready — recording starts in " + R.cdVal + "…";
+      beep(520, 0.12);
+    } else {
+      clearInterval(R.cdId); R.cdId = 0;
+      startNow();
+    }
+  }, 1000);
+}
+
+function startNow() {
+  R.arming = false;
+  R.recording = true;
+  R.startTs = Date.now();
+  R.rmsSqSum = 0; R.rmsFrames = 0;          // measure speech only, not countdown silence
+  R.mediaRecorder.start(250);               // keep chunks small so stop is snappy
+  hideCd();
+  $("rec-stage").classList.add("recording");
+  $("word-glow").classList.add("glow");
+  $("btn-stop").textContent = "■ Stop";
+  $("rec-state").className = "rec-state";
+  $("rec-state").textContent = "Recording… say \u201c" + WAKE_WORD + "\u201d once and press Stop.";
+  R.timerId = setInterval(tickTimer, 60);
+  beep(880, 0.22);                          // go-tone
+}
+
+function cancelArm() {
+  stopMedia();
+  var had = S.recordings[S.step];
+  $("rec-state").className = "rec-state warn";
+  $("rec-state").textContent = had
+    ? "Recording cancelled — your saved clip is still there."
+    : "Recording cancelled. Press Record when you are ready.";
+  renderClipState(had || null);
+}
+
+function showCd(n) {
+  $("cd-num").textContent = n;
+  $("cd-num").style.animation = "none";
+  void $("cd-num").offsetWidth;             // restart the pop animation
+  $("cd-num").style.animation = "";
+  $("cd-overlay").classList.remove("hidden");
+}
+function hideCd() { $("cd-overlay").classList.add("hidden"); }
+
+/* Tiny tone helper (silently skipped when audio context can't run) */
+function beep(freq, durSec) {
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!R.audioCtx) R.audioCtx = new AC();
+    var ctx = R.audioCtx;
+    if (ctx.state === "suspended") { ctx.resume(); return; }   // no beep until resumed
+    var o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durSec);
+    o.connect(g); g.connect(ctx.destination);
+    o.start();
+    o.stop(ctx.currentTime + durSec + 0.05);
+  } catch (e) { /* never let audio fail the flow */ }
+}
+
+function tickTimer() {
+  var dt = (Date.now() - R.startTs) / 1000;
+  $("timer").textContent = dt.toFixed(2) + " s";
+  /* pacing bar: pulses every `target` seconds to show the ideal window */
+  var t = CONSTRAINTS[S.step].target;
+  var pct = ((dt % t) / t) * 100;
+  $("timing-fill").style.width = pct + "%";
+  if (dt > 8) { $("rec-state").textContent = "That's a long take — stop when you've said the word once."; }
+}
+
+function animateMeter() {
+  if (!R.stream) return;
+  if (R.analyser) {
+    var buf = new Float32Array(R.analyser.fftSize);
+    R.analyser.getFloatTimeDomainData(buf);
+    var sum = 0;
+    for (var i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    R.rmsSqSum += sum; R.rmsFrames += buf.length;
+    drawMeter(Math.sqrt(sum / buf.length));
+  }
+  R.rafId = requestAnimationFrame(animateMeter);
+}
+
+function drawMeter(rms) {
+  var cv = $("meter"), ctx = cv.getContext("2d");
+  var w = cv.clientWidth * (window.devicePixelRatio || 1), h = cv.clientHeight * (window.devicePixelRatio || 1);
+  if (cv.width !== w) cv.width = w;
+  if (cv.height !== h) cv.height = h;
+  ctx.clearRect(0, 0, w, h);
+  var segs = 40, gap = 3, bw = (w - gap * (segs - 1)) / segs;
+  for (var s = 0; s < segs; s++) {
+    var lvl = s / segs;
+    var active = rms != null && rms > 0.003 && rms > (lvl * 0.35);
+    var col = s < 24 ? "124,92,255" : (s < 32 ? "251,191,36" : "248,113,113");
+    ctx.fillStyle = active ? "rgb(" + col + ")" : "rgba(255,255,255,0.07)";
+    var bh = h * (0.35 + 0.65 * (1 - Math.abs(lvl * 2 - 1)));
+    ctx.fillRect(s * (bw + gap), (h - bh) / 2, bw, bh);
+  }
+}
+
+function stopRecording() {
+  if (R.recording) {
+    if (R.mediaRecorder && R.mediaRecorder.state !== "inactive") R.mediaRecorder.stop();
+  } else if (R.arming) {
+    cancelArm();                            // Stop button doubles as "Cancel" pre-take
+  }
+}
+
+function onStop() {
+  if (!R.chunks.length) { resetStage(); return; }
+  var dur = (Date.now() - R.startTs) / 1000;
+  var mime = R.mediaRecorder.mimeType || "audio/webm";
+  var blob = new Blob(R.chunks, { type: mime });
+  stopMedia();
+
+  var rms = R.rmsFrames ? Math.sqrt(R.rmsSqSum / R.rmsFrames) : null;
+  var rec = {
+    speed: CONSTRAINTS[S.step].speed, distance: CONSTRAINTS[S.step].distance,
+    blob: blob, mime: mime, ext: extFor(mime), dur: Math.round(dur * 100) / 100, rms: rms,
+    from: "recorder"
+  };
+  setClip(rec);
+}
+
+function setClip(rec) {
+  var idx = S.step;
+  if (S.recordings[idx]) {
+    var old = S.recordings[idx];
+    var pv = $("preview");
+    if (!pv.paused) pv.pause();           // don't let the old clip keep playing
+    pv.removeAttribute("src");            // …or hold a revoked URL
+    pv.load();
+    URL.revokeObjectURL(old.url);
+  }
+  rec.url = URL.createObjectURL(rec.blob);
+  rec.constraint = idx + 1;
+  S.recordings[idx] = rec;
+  renderClipState(rec);
+}
+
+function retryClip() {
+  resetStage();
+  renderClipState(null);
+  $("btn-next").disabled = true;
+}
+
+function stopMedia() {
+  R.recording = false;
+  R.arming = false;
+  clearInterval(R.cdId); R.cdId = 0;
+  hideCd();
+  if (R.stream) { R.stream.getTracks().forEach(function (t) { t.stop(); }); R.stream = null; }
+  if (R.mediaRecorder && R.mediaRecorder.state !== "inactive") {
+    R.mediaRecorder.onstop = null;   // discard any pending capture — step changed
+    try { R.mediaRecorder.stop(); } catch (e) {}
+  }
+  R.mediaRecorder = null;
+  if (R.audioCtx) { try { R.audioCtx.close(); } catch (e) {} R.audioCtx = null; R.analyser = null; }
+  $("file-input").disabled = false;
+  cancelAnimationFrame(R.rafId);
+  clearInterval(R.timerId);
+  $("rec-stage").classList.remove("recording");
+  $("word-glow").classList.remove("glow");
+  $("btn-record").classList.remove("hidden");
+  $("btn-stop").classList.add("hidden");
+  $("btn-stop").textContent = "■ Stop";
+  $("btn-record").textContent = (S.recordings && S.recordings[S.step]) ? "● Record again" : "● Record";
+  $("timing-fill").style.width = "0%";
+  drawMeter(null);
+}
+
+/* file-upload fallback */
+function validAudioFile(f) {
+  if (f.type && /^audio\//i.test(f.type)) return true;
+  return /\.(wav|wave|mp3|m4a|aac|oga|ogg|opus|webm|flac|wma|amr|3gp|mp4)$/i.test(f.name || "");
+}
+
+$("file-input").addEventListener("change", function () {
+  var f = this.files && this.files[0];
+  if (!f) return;
+  if (f.size > 10 * 1024 * 1024) { flash("File too large — keep clips under 10 MB."); this.value = ""; return; }
+  if (!validAudioFile(f)) {
+    flash("That doesn't look like an audio file. Please choose a recording (.wav / .mp3 / .m4a / .ogg / .webm / …).");
+    this.value = "";
+    return;
+  }
+  var rec = {
+    speed: CONSTRAINTS[S.step].speed, distance: CONSTRAINTS[S.step].distance,
+    blob: f, mime: f.type || "audio/*", ext: (f.name.split(".").pop() || "audio").toLowerCase().replace(/[^a-z0-9]/g, ""),
+    dur: null, rms: null, from: "upload", name: f.name
+  };
+  setClip(rec);
+  $("upload-note").textContent = "Loaded \u201c" + f.name + "\u201d — verify it says \u201c" + WAKE_WORD + "\u201d once.";
+});
+
+/* ═══════════════════════ EXPORT ═══════════════════════ */
+function fileName(rec) {
+  var safe = S.sessionId.toLowerCase();
+  return "spectra_" + rec.speed + "_" + rec.distance + "_" + safe + "_c" + rec.constraint + "." + rec.ext;
+}
+
+/* Convert a recorded blob to 16-bit PCM WAV via WebAudio decode (cached per clip) */
+function toWav(rec) {
+  if (R.wavCache[rec.constraint]) return R.wavCache[rec.constraint];
+  var p = decodeToBuffer(rec.blob).then(function (buf) {
+    if (!buf) return null;
+    try {
+      return encodeWav(buf);
+    } catch (e) {
+      return null;
+    }
+  });
+  R.wavCache[rec.constraint] = p;
+  return p;
+}
+
+/* Decode any browser-supported audio blob into an AudioBuffer.
+   Robustness notes:
+   • uses ONE AudioContext per clip, closed on finish
+   • supports both promise- and callback-style decodeAudioData (old Safari)
+   • resumes a suspended context first (iOS quirk)
+   • never throws — resolves null when the format can't be decoded */
+function decodeToBuffer(blob) {
+  return new Promise(function (resolve) {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) { resolve(null); return; }
+    var ac = new AC();
+    var settled = false;
+    var finish = function (buf) {
+      if (settled) return;
+      settled = true;
+      try { ac.close(); } catch (e) {}
+      resolve(buf || null);
+    };
+
+    var reader = new FileReader();
+    reader.onerror = function () { finish(null); };
+    reader.onload = function () {
+      try {
+        var start = function () {
+          var pr;
+          try {
+            pr = ac.decodeAudioData(reader.result, finish, function () { finish(null); });
+          } catch (e) { finish(null); return; }
+          if (pr && typeof pr.then === "function") {
+            pr.then(function (b) { finish(b); }, function () { finish(null); });
+          }
+        };
+        if (ac.state === "suspended" && ac.resume) {
+          var rp = ac.resume();
+          if (rp && typeof rp.then === "function") rp.then(start, start);
+          else setTimeout(start, 0);
+        } else {
+          start();
+        }
+      } catch (e) {
+        finish(null);
+      }
+    };
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
+function encodeWav(buf) {
+  var numCh = buf.numberOfChannels, sr = buf.sampleRate, len = buf.length;
+  var chs = new Array(numCh);
+  for (var c = 0; c < numCh; c++) chs[c] = buf.getChannelData(c);
+  var bytes = len * numCh * 2, ab = new ArrayBuffer(44 + bytes), dv = new DataView(ab);
+  var w = function (o, s) { for (var i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); dv.setUint32(4, 36 + bytes, true); w(8, "WAVE");
+  w(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true);
+  dv.setUint16(22, numCh, true); dv.setUint32(24, sr, true);
+  dv.setUint32(28, sr * numCh * 2, true); dv.setUint16(32, numCh * 2, true); dv.setUint16(34, 16, true);
+  w(36, "data"); dv.setUint32(40, bytes, true);
+  var off = 44;
+  for (var i = 0; i < len; i++)
+    for (var c = 0; c < numCh; c++) {
+      var s = Math.max(-1, Math.min(1, chs[c][i]));
+      dv.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); off += 2;
+    }
+  return new Blob([ab], { type: "audio/wav" });
+}
+
+function saveBlob(blob, name) {
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+}
+
+/* ═══════════════════════ WAV STORAGE PIPELINE ═══════════════════════ */
+/* The requirement: after Step 4, every audio file is stored as .wav.
+   So once the Done screen opens we convert all clips to 16-bit PCM WAV;
+   every download / ZIP / server submission serves the .wav version.   */
+
+function wavName(rec) {
+  return fileName(rec).replace(/\.[a-z0-9]+$/i, ".wav");
+}
+
+function prepareWavs() {
+  if (D.promise) return D.promise;                       // already running/done
+  var state = $("wav-state");
+  D.failed = [];
+  state.textContent = "Converting your clips to 16-bit WAV for storage…";
+  state.className = "rec-state";
+
+  /* Sequential (not parallel) conversion: one AudioContext at a time is far
+     more reliable on iOS/Safari, which limits concurrent contexts. */
+  D.promise = S.recordings.reduce(function (chain, rec, i) {
+    return chain.then(function () {
+      return toWav(rec).then(function (wav) {
+        D.wavs[i] = wav || null;
+        if (wav) {
+          state.textContent = "Converting to 16-bit WAV… " + (i + 1) + "/4";
+        } else {
+          D.failed.push(i + 1);
+        }
+        renderClipList();
+      });
+    });
+  }, Promise.resolve()).then(function () {
+    if (D.failed.length) {
+      state.textContent = "⚠ " + D.failed.length + " clip(s) couldn't be decoded to WAV in this browser (clip " +
+        D.failed.join(", ") + ") — re-record them, or upload .wav/.mp3/.m4a/.ogg instead.";
+      state.className = "rec-state warn";
+    } else {
+      state.textContent = "✓ All 4 clips are stored as 16-bit WAV — ready for the dataset.";
+      state.className = "rec-state good";
+    }
+  });
+  return D.promise;
+}
+
+function renderDone() {
+  $("session-id").textContent = S.sessionId;
+  D.wavs = [null, null, null, null];
+  D.failed = [];
+  D.promise = null;
+  renderClipList();
+  prepareWavs();
+}
+
+function renderClipList() {
+  var list = $("clip-list");
+  list.innerHTML = "";
+  S.recordings.forEach(function (rec, i) {
+    var wav = D.wavs[i];
+    var card = document.createElement("div");
+    card.className = "clip-card";
+    var status = "";
+    if (rec.rms != null && rec.rms < 0.004) status = '<span class="meta-tag" style="color:#fbbf24">quiet?</span>';
+    if (rec.dur != null && (rec.dur < c_min(i) || rec.dur > c_max(i))) status += '<span class="meta-tag" style="color:#fbbf24">length outlier</span>';
+
+    var sizeTxt = wav
+      ? (wav.size / 1024).toFixed(0) + " KB · wav"
+      : (rec.blob.size / 1024).toFixed(0) + " KB · " + rec.ext + " (converting…)";
+
+    card.innerHTML =
+      '<div class="row1"><b>Step ' + (i + 1) + ' · ' + CONSTRAINTS[i].tag + '</b>' + status + '</div>' +
+      '<div class="fname" style="margin-top:4px">' + wavName(rec) + '</div>' +
+      '<div class="small" style="margin-top:2px">' + (rec.dur != null ? rec.dur.toFixed(2) + " s" : "duration unknown (uploaded)") +
+        " · " + sizeTxt + "</div>" +
+      '<div class="clip-actions">' +
+        '<button class="dl" style="border:0;cursor:pointer" onclick="downloadWav(' + i + ', this)">⬇ .wav file</button>' +
+        '<a class="dl" download="' + fileName(rec) + '" href="' + rec.url + '" title="Backup in the original format">⬇ Original backup</a>' +
+      "</div>";
+    list.appendChild(card);
+  });
+}
+
+function downloadWav(i, btn) {
+  var rec = S.recordings[i];
+  if (!rec) return;
+  var grab = D.wavs[i] ? Promise.resolve(D.wavs[i]) : toWav(rec);
+  btn.innerHTML = '<span class="spinner"></span> preparing…';
+  btn.disabled = true;
+  grab.then(function (wav) {
+    if (wav) saveBlob(wav, wavName(rec));
+    else alert("Could not decode this clip to WAV in your browser — use the Original backup instead.");
+    btn.disabled = false;
+    btn.innerHTML = "⬇ .wav file";
+  });
+}
+
+/* One row per clip. `file_name`/`format`/`size_bytes` describe the STORED
+   (.wav) artifact — or the original when conversion wasn't possible. */
+function manifest() {
+  return S.recordings.map(function (rec, i) {
+    var wav = D.wavs[i];
+    var name = wav ? wavName(rec) : fileName(rec);
+    var fmt = wav ? "wav" : rec.ext;
+    var size = wav ? wav.size : rec.blob.size;
+    return {
+      session_id: S.sessionId, timestamp_iso: S.tsIso,
+      gender: S.gender, age_group: S.ageGroup, environment: S.environment, device: S.device,
+      consent: S.consent ? 1 : 0,
+      constraint_n: i + 1, speed: rec.speed, distance: rec.distance,
+      file_name: name, format: fmt, duration_s: rec.dur, rms: rec.rms,
+      size_bytes: size
+    };
+  });
+}
+
+function downloadManifest() {
+  prepareWavs().then(function () {
+    saveBlob(new Blob([JSON.stringify(manifest(), null, 2)], { type: "application/json" }),
+      S.sessionId.toLowerCase() + "_manifest.json");
+  });
+}
+function csvContent() {
+  var head = ["session_id","timestamp_iso","gender","age_group","environment","device","consent","constraint_n","speed","distance","file_name","format","duration_s","rms","size_bytes"];
+  var esc = function (v) { v = v == null ? "" : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  var rows = [head.join(",")].concat(manifest().map(function (r) {
+    return head.map(function (k) { return esc(r[k]); }).join(",");
+  }));
+  return rows.join("\n");
+}
+function downloadCsv() {
+  prepareWavs().then(function () {
+    saveBlob(new Blob([csvContent()], { type: "text/csv" }), S.sessionId.toLowerCase() + "_summary.csv");
+  });
+}
+
+/* ═══════════════════════ ZIP BUNDLE (no external libs) ═══════════════════════ */
+/* Classic "store"-method ZIP writer: CRC-32 + local headers + central
+   directory. Compression-free is perfectly fine for opus/webm/mp3 clips. */
+
+var CRC_TABLE = (function () {
+  var t = new Int32Array(256);
+  for (var n = 0; n < 256; n++) {
+    var c = n;
+    for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c;
+  }
+  return t;
+})();
+function crc32(u8) {
+  var c = 0xFFFFFFFF;
+  for (var i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function dosDateTime(d) {
+  var y = Math.max(1980, d.getFullYear());
+  var time = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF;
+  var date = (((y - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xFFFF;
+  return { time: time, date: date };
+}
+
+/* files: [{ name, blob }] → Promise<Blob> */
+function buildZip(files) {
+  var enc = new TextEncoder();
+  var parts = [], central = [], offset = 0;
+
+  return Promise.all(files.map(function (f) { return f.blob.arrayBuffer(); })).then(function (bufs) {
+    for (var i = 0; i < files.length; i++) {
+      var nameU = enc.encode(files[i].name);
+      var dataU = new Uint8Array(bufs[i]);
+      var crc = crc32(dataU), dt = dosDateTime(new Date());
+
+      var lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true);
+      lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);          // method 0 = store
+      lh.setUint16(10, dt.time, true); lh.setUint16(12, dt.date, true);
+      lh.setUint32(14, crc, true); lh.setUint32(18, dataU.length, true);
+      lh.setUint32(22, dataU.length, true);
+      lh.setUint16(26, nameU.length, true); lh.setUint16(28, 0, true);
+      parts.push(new Uint8Array(lh.buffer), nameU, dataU);
+
+      var ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+      ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true);
+      ch.setUint16(12, dt.time, true); ch.setUint16(14, dt.date, true);
+      ch.setUint32(16, crc, true); ch.setUint32(20, dataU.length, true);
+      ch.setUint32(24, dataU.length, true); ch.setUint16(28, nameU.length, true);
+      ch.setUint16(30, 0, true); ch.setUint16(32, 0, true); ch.setUint16(34, 0, true);
+      ch.setUint16(36, 0, true); ch.setUint32(38, 0, true); ch.setUint32(42, offset, true);
+      central.push(new Uint8Array(ch.buffer), nameU);
+
+      offset += 30 + nameU.length + dataU.length;
+    }
+
+    var cdSize = 0;
+    central.forEach(function (p) { cdSize += p.length; });
+    var end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true);
+    end.setUint16(10, files.length, true); end.setUint32(12, cdSize, true);
+    end.setUint32(16, offset, true); end.setUint16(20, 0, true);
+
+    var all = parts.concat(central);
+    all.push(new Uint8Array(end.buffer));
+    return new Blob(all, { type: "application/zip" });
+  });
+}
+
+function downloadAllZip() {
+  var btn = $("btn-zip"), state = $("zip-state");
+  if (!S.recordings.every(Boolean)) { state.textContent = "Finish all 4 clips first."; state.className = "rec-state warn"; return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> preparing…';
+  state.textContent = "Converting clips to WAV, then zipping…";
+  state.className = "rec-state";
+
+  prepareWavs().then(function () {
+    /* STRICT WAV GUARANTEE — the ZIP contains .wav files ONLY. If any clip
+       could not be converted, refuse to build a mixed archive instead of
+       silently including the original (e.g. .webm) file. */
+    if (D.failed.length) {
+      state.textContent = "⚠ " + D.failed.length + " clip(s) couldn't be converted to WAV (clip " +
+        D.failed.join(", ") + "), so no ZIP was created — the bundle only ever contains .wav files. " +
+        "Go back to that step and re-record, or upload a .wav/.mp3/.m4a/.ogg file, then retry.";
+      state.className = "rec-state bad";
+      btn.disabled = false;
+      btn.innerHTML = "⬇ Download everything (.zip)";
+      return;
+    }
+
+    var files = S.recordings.map(function (rec, i) {
+      return { name: wavName(rec), blob: D.wavs[i] };   // guaranteed non-null here
+    });
+    files.push({ name: S.sessionId.toLowerCase() + "_manifest.json", blob: new Blob([JSON.stringify(manifest(), null, 2)], { type: "application/json" }) });
+    files.push({ name: S.sessionId.toLowerCase() + "_summary.csv", blob: new Blob([csvContent()], { type: "text/csv" }) });
+    state.textContent = "Zipping your .wav files…";
+    return buildZip(files);
+  }).then(function (zip) {
+    if (!zip) return;                                    // failure branch already handled above
+    saveBlob(zip, S.sessionId.toLowerCase() + "_session_bundle.zip");
+    state.textContent = "✓ Bundle downloaded — 4 × .wav + manifest + CSV.";
+    state.className = "rec-state good";
+  }).catch(function (err) {
+    state.textContent = "⚠ Could not build the ZIP (" + err.message + ") — try the individual .wav downloads instead.";
+    state.className = "rec-state bad";
+  }).then(function () {
+    btn.disabled = false;
+    btn.innerHTML = "⬇ Download everything — 4 × .wav (.zip)";
+  });
+}
+
+/* ═══════════════════════ SERVER SUBMISSION (Option B) ═══════════════════════ */
+/* One JSON POST per session, Content-Type text/plain (CORS-simple request,
+   readable response — the standard pattern for static pages → Apps Script). */
+
+function readBlobAsBase64(blob) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function () { resolve(String(reader.result).split(",")[1] || ""); };
+    reader.onerror = function () { reject(new Error("Could not read a clip in your browser.")); };
+    reader.readAsDataURL(blob);
+  });
+}
+
+function postText(url, bodyStr) {
+  return new Promise(function (resolve, reject) {
+    if (window.fetch) {
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: bodyStr
+      }).then(function (r) {
+        return r.json().then(resolve, function () {
+          reject(new Error("Unexpected server response."));
+        });
+      }).catch(reject);
+    } else {
+      /* IE11-era fallback */
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+      xhr.setRequestHeader("Content-Type", "text/plain");
+      xhr.onload = function () {
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch (e) { reject(new Error("Unexpected server response.")); }
+      };
+      xhr.onerror = function () { reject(new Error("Network error while submitting.")); };
+      xhr.send(bodyStr);
+    }
+  });
+}
+
+function submitSession() {
+  var state = $("submit-state");
+  var btn = $("btn-submit");
+  if (!WEBAPP_URL) {
+    state.textContent = "Submission is not configured on this page (WEBAPP_URL is empty) — please use the downloads below.";
+    state.className = "rec-state warn";
+    return;
+  }
+  if (S.submitted) {
+    state.textContent = "✓ This session was already submitted successfully.";
+    state.className = "rec-state good";
+    return;
+  }
+  if (!S.recordings.every(Boolean)) {
+    state.textContent = "You haven't finished all 4 clips yet.";
+    state.className = "rec-state warn";
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "☁ Submitting…";
+  state.textContent = "Preparing your clips…";
+  state.className = "rec-state";
+
+  /* WAV-first: the files stored server-side are the 16-bit .wav versions.
+     Strict like the ZIP: if any clip couldn't be converted, refuse to
+     submit a mixed session so the dataset stays uniform .wav. */
+  prepareWavs().then(function () {
+    if (D.failed.length) {
+      state.textContent = "⚠ " + D.failed.length + " clip(s) couldn't be converted to WAV (clip " +
+        D.failed.join(", ") + "), so nothing was submitted — the dataset only stores .wav files. " +
+        "Go back and re-record that step, or upload a .wav/.mp3/.m4a/.ogg file, then submit again.";
+      state.className = "rec-state bad";
+      btn.disabled = false;
+      btn.textContent = "☁ Submit session to dataset";
+      return null;
+    }
+    return Promise.all(S.recordings.map(function (rec, i) {
+      var wav = D.wavs[i];
+      return readBlobAsBase64(wav).then(function (b64) {
+        return {
+          constraintN: i + 1,
+          speed: rec.speed,
+          distance: rec.distance,
+          fileName: wavName(rec),
+          mime: "audio/wav",
+          sizeBytes: wav.size,
+          durationS: rec.dur,
+          rms: rec.rms,
+          dataBase64: b64
+        };
+      });
+    }));
+  }).then(function (clips) {
+    if (!clips) return;                                  // failure branch already handled
+    state.textContent = "Uploading to the dataset Drive folder — may take a few seconds…";
+    var payload = {
+      token: API_TOKEN,
+      sessionId: S.sessionId,
+      timestampIso: S.tsIso,
+      gender: S.gender,
+      ageGroup: S.ageGroup,
+      environment: S.environment,
+      device: S.device,
+      consent: S.consent ? 1 : 0,
+      clips: clips
+    };
+    return postText(WEBAPP_URL, JSON.stringify(payload));
+  }).then(function (res) {
+    if (!res) return;                                    // guard branch — message already shown
+    if (res && res.ok) {
+      S.submitted = true;
+      btn.disabled = true;
+      btn.textContent = "☁ Submitted ✓";
+      var dupNote = res.duplicates ? " (" + res.duplicates + " already present — skipped)" : "";
+      state.textContent = "✓ " + res.saved.length + " clip(s) uploaded to your Drive" + dupNote +
+        (res.logged ? "; 1 row per clip appended to the log sheet." : " (logging sheet not configured — run initializeSpectraDataset).");
+      state.className = "rec-state good";
+      $("submit-note").textContent = "Files are safe in your Drive — downloads below remain available as a backup copy.";
+    } else {
+      btn.disabled = false;
+      btn.textContent = "☁ Submit session to dataset";
+      state.textContent = "⚠ Server rejected the submission: " + ((res && res.error) || "unknown error");
+      state.className = "rec-state bad";
+    }
+  }).catch(function (err) {
+    btn.disabled = false;
+    btn.textContent = "☁ Submit session to dataset";
+    state.textContent = "⚠ Upload failed (" + err.message + "). Your clips are safe on this device — " +
+      "use the downloads below, or press submit again (already-saved clips are skipped server-side).";
+    state.className = "rec-state bad";
+  });
+}
+
+function startNewSession() {
+  S.recordings.forEach(function (r) { if (r && r.url) URL.revokeObjectURL(r.url); });
+  S.recordings = []; S.step = 0; S.submitted = false;
+  D.wavs = [null, null, null, null]; D.failed = []; D.promise = null;
+  R.wavCache = [];
+  $("btn-submit").disabled = false;
+  $("btn-submit").textContent = "☁ Submit session to dataset";
+  $("submit-state").textContent = "";
+  $("submit-state").className = "rec-state";
+  $("wav-state").textContent = "";
+  $("wav-state").className = "rec-state";
+  $("zip-state").textContent = "";
+  $("zip-state").className = "rec-state";
+  ["gender", "environment", "age_group", "device", "consent"].forEach(function (q) {
+    var input = document.querySelector('.opt-group[data-q="' + q + '"] input:checked');
+    if (input) input.checked = false;
+    document.querySelectorAll('.opt-group[data-q="' + q + '"] .opt').forEach(function (o) { o.classList.remove("selected"); });
+  });
+  go("demographics");
+}
+
+/* warn before leaving if there are unsaved clips, a countdown or a live recording (except on the Done screen) */
+window.addEventListener("beforeunload", function (e) {
+  var onDone = !$("view-done").classList.contains("hidden");
+  if (!onDone && (S.recordings.some(Boolean) || R.recording || R.arming)) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
+
+/* Init */
+if (!SUPPORTED) $("unsupported").classList.remove("hidden");
+resetStage();
+
+/* Server-submission affordance */
+(function initSubmit() {
+  var btn = $("btn-submit"), note = $("submit-note"), state = $("submit-state");
+  if (!WEBAPP_URL) {
+    btn.classList.add("btn-ghost");
+    btn.textContent = "☁ Submit session to dataset";
+    note.textContent = "Server submission isn't configured (WEBAPP_URL is empty) — use the downloads below, " +
+      "or deploy webAppReceiver.gs and paste its URL + secret at the top of this file.";
+  } else {
+    note.textContent = "Uploads your 4 clips + metadata straight to the project's Drive folder — no Google sign-in needed.";
+  }
+  state.className = "rec-state";
+})();
+</script>
+</body>
+</html>
