@@ -32,7 +32,7 @@ def organize_files():
             if file_name.endswith('.wav'):
                 shutil.move(os.path.join(noise_source, file_name), os.path.join(NOISE_DIR, file_name))
 
-    # 2. Move select words to act as hard-negatives against "SPECTRA"
+    # 2. Move select words to act as generic negative examples (Google Speech Commands)
     negative_classes = ['yes', 'no', 'stop', 'go', 'up', 'down', 'left', 'right', 'on', 'off']
     for word in negative_classes:
         word_source = os.path.join(TEMP_DIR, word)

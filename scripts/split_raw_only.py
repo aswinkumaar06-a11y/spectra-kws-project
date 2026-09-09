@@ -3,7 +3,7 @@ split_raw_only.py — STEP 1 of the corrected pipeline.
 Groups files by their immediate parent folder (every contributor's
 folder, including named folders and session_bundle folders), then
 splits by GROUP so a contributor's files never cross train/val/test.
-Run this BEFORE any augmentation.
+Run this BEFORE any augmentation, and AFTER prepare_raw_positive.py (Step 0).
 """
 import os
 import glob
