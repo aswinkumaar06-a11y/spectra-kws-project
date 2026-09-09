@@ -24,6 +24,13 @@ def extract_mfcc(path):
     else:
         audio = audio[:target_len]
 
+    # Normalize audio amplitude so the model learns spectral shape,
+    # not volume. This makes training/inference consistent regardless
+    # of recording device or distance from mic.
+    max_amp = np.max(np.abs(audio))
+    if max_amp > 1e-6:
+        audio = audio / max_amp  # peak-normalize to [-1, 1]
+
     mfcc = librosa.feature.mfcc(y=audio, sr=SR, n_mfcc=N_MFCC,
                                  n_fft=N_FFT, hop_length=HOP_LENGTH)
     if mfcc.shape[1] < FIXED_FRAMES:

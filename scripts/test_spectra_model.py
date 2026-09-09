@@ -30,6 +30,16 @@ N_MFCC = 40                  # matches your model input shape (40, 32, 1)
 N_FRAMES = 32                # matches your model input shape
 CONFIDENCE_THRESHOLD = 0.5   # adjust after watching live results
 
+def normalize_amplitude(audio):
+    """
+    Peak-normalize audio to [-1, 1] range.
+    This MUST match the normalization used in extract_features.py during training.
+    """
+    max_amp = np.max(np.abs(audio))
+    if max_amp > 1e-6:  # avoid division by zero for silence
+        audio = audio / max_amp
+    return audio
+
 
 def extract_mfcc(audio, sr=SAMPLE_RATE):
     """
@@ -119,7 +129,7 @@ def run_on_files(test_dir="dataset/splits/test_raw"):
     print(f"Recall:    {recall:.4f}")
 
 
-def run_live():
+def run_live(device=None):
     import sounddevice as sd
 
     model = SpectraModel()
@@ -128,11 +138,15 @@ def run_live():
     def callback(indata, frames, time_info, status):
         audio_q.put(indata.copy())
 
+    if device is not None:
+        print(f"Using audio input device: {device} ({sd.query_devices(device)['name']})")
+    else:
+        print(f"Using default audio input device: {sd.query_devices(sd.default.device[0])['name']}")
     print("Listening... say 'SPECTRA' (Ctrl+C to stop)")
     block_size = int(SAMPLE_RATE * CLIP_DURATION)
 
     with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, callback=callback,
-                         blocksize=block_size, dtype="float32"):
+                         blocksize=block_size, dtype="float32", device=device):
         buffer = np.zeros(0, dtype=np.float32)
         try:
             while True:
@@ -141,6 +155,9 @@ def run_live():
                 if len(buffer) >= block_size:
                     clip = buffer[:block_size]
                     buffer = buffer[block_size // 2:]  # 50% overlap sliding window
+
+                    # Normalize amplitude to match training data levels
+                    clip = normalize_amplitude(clip)
 
                     mfcc = extract_mfcc(clip)
                     probs = model.predict(mfcc)
@@ -160,6 +177,8 @@ if __name__ == "__main__":
     parser.add_argument("--mode", choices=["files", "live"], required=True)
     parser.add_argument("--model", default=MODEL_PATH)
     parser.add_argument("--threshold", type=float, default=CONFIDENCE_THRESHOLD)
+    parser.add_argument("--device", type=int, default=None,
+                        help="Audio input device index (run scripts/mic_test.py to find yours)")
     args = parser.parse_args()
 
     MODEL_PATH = args.model
@@ -168,4 +187,4 @@ if __name__ == "__main__":
     if args.mode == "files":
         run_on_files()
     else:
-        run_live()
+        run_live(device=args.device)
