@@ -3,77 +3,63 @@ Spectra KWS - Local model testing script
 Tests the quantized spectra_model.tflite the same way the ESP32 will run it.
 
 Two modes:
-  python test_spectra_model.py --mode files   -> runs your existing test WAVs through the tflite model
-  python test_spectra_model.py --mode live    -> live mic testing, prints predictions in real time
-
-Requirements (install in your venv):
-    pip install tflite-runtime sounddevice numpy librosa
-    (if tflite-runtime fails to install on Windows, use: pip install tensorflow
-     and change the import below to `import tensorflow.lite as tflite`)
+  python scripts/test_spectra_model.py --mode files [--model models/spectra_model.tflite]
+  python scripts/test_spectra_model.py --mode live  [--device 4] [--model models/spectra_model.tflite]
 """
 
-import argparse
-import numpy as np
-import librosa
+import os
+import glob
 import time
 import queue
+import argparse
+import numpy as np
 
 try:
     import tflite_runtime.interpreter as tflite
 except ImportError:
     import tensorflow.lite as tflite
 
-MODEL_PATH = "models/spectra_model.tflite"
-SAMPLE_RATE = 16000
-CLIP_DURATION = 1.0          # seconds - MATCH whatever you used in training
-N_MFCC = 40                  # matches your model input shape (40, 32, 1)
-N_FRAMES = 32                # matches your model input shape
-CONFIDENCE_THRESHOLD = 0.5   # adjust after watching live results
+from audio_utils import (
+    preprocess_audio_clip,
+    normalize_amplitude,
+    check_energy_gate,
+    extract_mfcc,
+    quantize_to_int8,
+    dequantize_from_int8,
+    SAMPLE_RATE,
+    CLIP_DURATION,
+    N_MFCC,
+    N_FRAMES,
+    ENERGY_GATE_THRESHOLD
+)
 
-def normalize_amplitude(audio):
-    """
-    Peak-normalize audio to [-1, 1] range.
-    This MUST match the normalization used in extract_features.py during training.
-    """
-    max_amp = np.max(np.abs(audio))
-    if max_amp > 1e-6:  # avoid division by zero for silence
-        audio = audio / max_amp
-    return audio
-
-
-def extract_mfcc(audio, sr=SAMPLE_RATE):
-    """
-    IMPORTANT: This MUST exactly match the preprocessing used in extract_features.py
-    during training. If these settings differ even slightly, accuracy will be wrong.
-    Adjust n_fft / hop_length / n_mfcc here to match your training script exactly.
-    """
-    mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=N_MFCC, n_fft=1024, hop_length=512)
-    # pad or truncate to fixed frame count
-    if mfcc.shape[1] < N_FRAMES:
-        pad_width = N_FRAMES - mfcc.shape[1]
-        mfcc = np.pad(mfcc, ((0, 0), (0, pad_width)), mode="constant")
-    else:
-        mfcc = mfcc[:, :N_FRAMES]
-    return mfcc.astype(np.float32)
-
+DEFAULT_MODEL_PATH = "models/spectra_model.tflite"
+CONFIDENCE_THRESHOLD = 0.5
 
 class SpectraModel:
-    def __init__(self, model_path=MODEL_PATH):
+    def __init__(self, model_path=DEFAULT_MODEL_PATH):
+        self.model_path = model_path
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found at: {model_path}")
         self.interpreter = tflite.Interpreter(model_path=model_path)
         self.interpreter.allocate_tensors()
         self.input_details = self.interpreter.get_input_details()
         self.output_details = self.interpreter.get_output_details()
-        print(f"Loaded model. Input shape: {self.input_details[0]['shape']}, "
-              f"dtype: {self.input_details[0]['dtype']}")
+        print(f"Loaded model: {model_path}")
+        print(f"  Input shape: {self.input_details[0]['shape']}, dtype: {self.input_details[0]['dtype']}")
+        print(f"  Input quant: {self.input_details[0]['quantization']}")
+        print(f"  Output shape: {self.output_details[0]['shape']}, dtype: {self.output_details[0]['dtype']}")
+        print(f"  Output quant: {self.output_details[0]['quantization']}")
 
     def predict(self, mfcc):
+        # Shape: (1, 40, 32, 1)
         x = mfcc.reshape(1, N_MFCC, N_FRAMES, 1)
 
-        # Handle INT8 quantized input if applicable
+        # Handle INT8 quantized input with proper rounding & clipping
         in_dtype = self.input_details[0]['dtype']
         if in_dtype == np.int8:
             scale, zero_point = self.input_details[0]['quantization']
-            x = (x / scale + zero_point).astype(np.int8)
+            x = quantize_to_int8(x, scale, zero_point)
         else:
             x = x.astype(np.float32)
 
@@ -84,65 +70,66 @@ class SpectraModel:
         out_dtype = self.output_details[0]['dtype']
         if out_dtype == np.int8:
             scale, zero_point = self.output_details[0]['quantization']
-            output = (output.astype(np.float32) - zero_point) * scale
+            output = dequantize_from_int8(output, scale, zero_point)
 
-        return output[0]  # [prob_negative, prob_positive] most likely
+        return output[0]  # [prob_negative, prob_positive]
 
-
-def run_on_files(test_dir="dataset/splits/test_raw"):
-    # Note: I changed the default test_dir to 'test_raw' since the actual split 
-    # folder structure with unaugmented data created by split_raw_only.py 
-    # saves the files into splits/<split_name>_raw/. 
-    import os
-    import glob
-
-    model = SpectraModel()
+def run_on_files(test_dir="dataset/splits/test_raw", model_path=DEFAULT_MODEL_PATH, threshold=CONFIDENCE_THRESHOLD):
+    model = SpectraModel(model_path=model_path)
     results = {"tp": 0, "tn": 0, "fp": 0, "fn": 0}
 
     for label, subdir in [("positive", "positive"), ("negative", "negative")]:
         files = glob.glob(os.path.join(test_dir, subdir, "*.wav"))
-        print(f"\nTesting {len(files)} {label} files...")
+        print(f"\nTesting {len(files)} {label} files from {os.path.join(test_dir, subdir)}...")
         for f in files:
-            audio, sr = librosa.load(f, sr=SAMPLE_RATE, duration=CLIP_DURATION)
-            audio = librosa.util.fix_length(audio, size=int(SAMPLE_RATE * CLIP_DURATION))
-            mfcc = extract_mfcc(audio, sr)
+            # Shared preprocessing guaranteed bit-for-bit identical to training
+            mfcc = preprocess_audio_clip(f, normalize=True)
             probs = model.predict(mfcc)
-            pred_positive = probs[1] > CONFIDENCE_THRESHOLD
-
+            pred_positive = bool(probs[1] > threshold)
             actual_positive = (label == "positive")
+
             if actual_positive and pred_positive:
                 results["tp"] += 1
             elif actual_positive and not pred_positive:
                 results["fn"] += 1
-                print(f"  MISSED: {f} (confidence={probs[1]:.3f})")
+                print(f"  MISSED: {os.path.basename(f)} (conf={probs[1]:.3f})")
             elif not actual_positive and pred_positive:
                 results["fp"] += 1
-                print(f"  FALSE TRIGGER: {f} (confidence={probs[1]:.3f})")
+                print(f"  FALSE TRIGGER: {os.path.basename(f)} (conf={probs[1]:.3f})")
             else:
                 results["tn"] += 1
 
     precision = results["tp"] / (results["tp"] + results["fp"] + 1e-9)
     recall = results["tp"] / (results["tp"] + results["fn"] + 1e-9)
-    print(f"\n--- Results (threshold={CONFIDENCE_THRESHOLD}) ---")
+    total = sum(results.values())
+    accuracy = (results["tp"] + results["tn"]) / (total + 1e-9)
+    print(f"\n--- File Test Results (threshold={threshold}) ---")
     print(results)
+    print(f"Accuracy:  {accuracy:.4f}")
     print(f"Precision: {precision:.4f}")
     print(f"Recall:    {recall:.4f}")
+    return results
 
-
-def run_live(device=None):
+def run_live(device=None, model_path=DEFAULT_MODEL_PATH, threshold=CONFIDENCE_THRESHOLD):
     import sounddevice as sd
 
-    model = SpectraModel()
-    audio_q = queue.Queue()
+    model = SpectraModel(model_path=model_path)
+    # Bounded queue (maxsize=10) to prevent unbounded memory growth
+    audio_q = queue.Queue(maxsize=10)
 
     def callback(indata, frames, time_info, status):
-        audio_q.put(indata.copy())
+        if status:
+            print(f"\nAudio callback status: {status}")
+        try:
+            audio_q.put_nowait(indata.copy())
+        except queue.Full:
+            print("\nWARNING: Audio buffer overflow — inference is lagging!")
 
-    if device is not None:
-        print(f"Using audio input device: {device} ({sd.query_devices(device)['name']})")
-    else:
-        print(f"Using default audio input device: {sd.query_devices(sd.default.device[0])['name']}")
+    device_name = sd.query_devices(device)['name'] if device is not None else sd.query_devices(sd.default.device[0])['name']
+    print(f"Using audio input device: {device} ({device_name})")
+    print(f"Energy Gate Threshold: {ENERGY_GATE_THRESHOLD}")
     print("Listening... say 'SPECTRA' (Ctrl+C to stop)")
+
     block_size = int(SAMPLE_RATE * CLIP_DURATION)
 
     with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, callback=callback,
@@ -156,35 +143,40 @@ def run_live(device=None):
                     clip = buffer[:block_size]
                     buffer = buffer[block_size // 2:]  # 50% overlap sliding window
 
-                    # Normalize amplitude to match training data levels
-                    clip = normalize_amplitude(clip)
+                    # Energy gate: check if clip contains sufficient energy
+                    has_energy, max_amp = check_energy_gate(clip, threshold=ENERGY_GATE_THRESHOLD)
+                    if not has_energy:
+                        q_depth = audio_q.qsize()
+                        print(f"\r[Silence... amp={max_amp:.3f} | q_depth={q_depth}]               ", end="", flush=True)
+                        continue
 
-                    mfcc = extract_mfcc(clip)
+                    # Preprocess with peak normalization & MFCC extraction
+                    t_start = time.perf_counter()
+                    norm_clip = normalize_amplitude(clip)
+                    mfcc = extract_mfcc(norm_clip)
                     probs = model.predict(mfcc)
-                    confidence = probs[1]
+                    inference_ms = (time.perf_counter() - t_start) * 1000.0
 
+                    confidence = probs[1]
+                    q_depth = audio_q.qsize()
                     bar = "#" * int(confidence * 40)
-                    marker = "  <-- TRIGGER" if confidence > CONFIDENCE_THRESHOLD else ""
-                    print(f"\r[{bar:<40}] {confidence:.3f}{marker}", end="", flush=True)
-                    if confidence > CONFIDENCE_THRESHOLD:
-                        print()  # newline after a trigger so it's visible in history
+                    marker = "  <-- TRIGGER" if confidence > threshold else ""
+                    print(f"\r[{bar:<40}] {confidence:.3f} (amp={max_amp:.3f} | inf={inference_ms:.1f}ms | q={q_depth}){marker}", end="", flush=True)
+                    if confidence > threshold:
+                        print()
         except KeyboardInterrupt:
             print("\nStopped.")
 
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Spectra KWS Inference and Evaluation")
     parser.add_argument("--mode", choices=["files", "live"], required=True)
-    parser.add_argument("--model", default=MODEL_PATH)
-    parser.add_argument("--threshold", type=float, default=CONFIDENCE_THRESHOLD)
-    parser.add_argument("--device", type=int, default=None,
-                        help="Audio input device index (run scripts/mic_test.py to find yours)")
+    parser.add_argument("--model", default=DEFAULT_MODEL_PATH, help="Path to .tflite model file")
+    parser.add_argument("--threshold", type=float, default=CONFIDENCE_THRESHOLD, help="Confidence trigger threshold")
+    parser.add_argument("--device", type=int, default=None, help="Audio input device index")
+    parser.add_argument("--test-dir", default="dataset/splits/test_raw", help="Directory containing test files")
     args = parser.parse_args()
 
-    MODEL_PATH = args.model
-    CONFIDENCE_THRESHOLD = args.threshold
-
     if args.mode == "files":
-        run_on_files()
+        run_on_files(test_dir=args.test_dir, model_path=args.model, threshold=args.threshold)
     else:
-        run_live(device=args.device)
+        run_live(device=args.device, model_path=args.model, threshold=args.threshold)

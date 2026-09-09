@@ -1,0 +1,76 @@
+# Spectra KWS - Codebase Revision and Audit Record (v2)
+Baseline Commit SHA: 71e1f5f46290a44d784775a2831b76f0548f7162
+Branch: main
+Remote: origin/main (https://github.com/aswinkumaar06-a11y/spectra-kws-project.git)
+Inspection Baseline: Arena.ai Independent Review (reconciled against eefd911 and 71e1f5f4)
+Audit Timestamp: 2026-09-09T21:30:00+05:30
+
+================================================================================
+EXECUTION ENVIRONMENT SPECIFICATIONS
+================================================================================
+Platform: Windows-10-10.0.26220-SP0 (Windows 11 x64)
+Python Interpreter: 3.11.9 (tags/v3.11.9:de54cf5, Apr 2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]
+TensorFlow: 2.21.0
+Librosa: 0.11.0
+NumPy: 2.4.6
+SoundFile: 0.14.0
+Virtual Environment Path: d:\spectra-kws-project\venv
+
+================================================================================
+COMMAND EXECUTION LOG & RETURN CODES
+================================================================================
+1. Feature Extraction:
+   Command: python scripts/extract_features.py
+   Timestamp: 2026-09-09 19:39:15
+   Exit Code: 0
+   Output: Train: X(7842, 40, 32, 1), Val: X(1086, 40, 32, 1), Test: X(396, 40, 32, 1)
+
+2. Model Training & Quantization:
+   Command: python scripts/train_model.py
+   Timestamp: 2026-09-09 19:44:28
+   Exit Code: 0
+   Class Weights: {0: 0.7836, 1: 1.3816}
+   Calibration: 200 balanced samples (seed=42)
+   Output: models/spectra_model.h5, models/spectra_model.tflite (38.6 KB), models/spectra_model.cc
+
+3. Standalone Quantitative INT8 TFLite Evaluation:
+   Command: python scripts/evaluate_tflite.py
+   Timestamp: 2026-09-09 20:48:39
+   Exit Code: 0
+   Result: 395/396 accuracy (99.75%), Recall: 1.0000 (119/119), Precision: 0.9917
+   Hard Negatives: 0 false positives among 24 synthetic confounder test clips (0.00% empirical error rate)
+
+4. Regression Test Suite:
+   Command: python -m unittest discover -v tests/
+   Timestamp: 2026-09-09 20:48:39
+   Exit Code: 0
+   Result: 10/10 tests passed (4.91 ms avg inference latency per 500ms hop, queue depth bounded to 1)
+
+================================================================================
+NOISE-POOL PROVENANCE & CHRONOLOGY
+================================================================================
+Status: Contemporaneous generation with packaging-time string deduplication.
+Detailed Record:
+1. Generation: noise_pools.json was generated programmatically during execution of split_raw_only.py (prior to augment_per_split.py).
+2. Partitioning logic:
+   - train: doing_the_dishes.wav, exercise_bike.wav, running_tap.wav, white_noise.wav
+   - val: dude_miaowing.wav
+   - test: pink_noise.wav (held out / clean test set, no noise augmented into test)
+3. Packaging-time operation: Recursive file globbing in split_raw_only.py had matched files both in dataset/raw/noise/ and dataset/raw/noise/_background_noise_/, causing filenames to be listed twice in JSON arrays. At packaging time, duplicate string entries were removed to produce clean unique lists.
+4. Model relationship: augment_per_split.py maps filenames to paths using a dictionary lookup (noise_map = {os.path.basename(f): f ...}), meaning duplicate list entries resolved to the identical files. No audio, features, or models were regenerated or altered by this formatting deduplication.
+
+================================================================================
+SYNTHETIC DATA VOICE ALLOCATION & SCOPE CLARIFICATION
+================================================================================
+Synthetic Voice Identities:
+- Microsoft David Desktop: Allocated to Train at 130, 160, 190, 220 WPM.
+- Microsoft Zira Desktop: Allocated to Train at 130, 160 WPM; Held out into Test at 190, 220 WPM.
+Scope Clarification:
+The test set evaluates generalization across held-out speaking-rate settings (190 and 220 WPM) of an existing synthetic voice (Zira) that was present during training. It does NOT evaluate an entirely unseen speaker voice.
+
+================================================================================
+UNIMPLEMENTED EMBEDDED & BACKEND DELIVERABLES
+================================================================================
+- F01-F09 (ESP32-S3 firmware, I2S DMA, C-level ring buffer, WebSocket ASR streaming): OUTSTANDING PROJECT DELIVERABLES / UNIMPLEMENTED. Not present in this repository revision.
+- R03 (Data Collection web backend): OUTSTANDING PROJECT DELIVERABLE / UNIMPLEMENTED. Data Collection.html frontend exists, but WEBAPP_URL endpoint is unconfigured.
+- M09 (K-Fold Cross Validation): Deferred to future work.

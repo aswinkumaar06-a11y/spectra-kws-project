@@ -1,0 +1,22 @@
+{
+  "h5_file": "models\\spectra_model.h5",
+  "h5_sha256": "a76587d11fbacce626f141ad6e435c195d469041ca701476445489a4da947f02",
+  "tflite_file": "models\\spectra_model.tflite",
+  "tflite_sha256": "b75295632240d022d77e3465a02b33ec7cfed01dd962aabace8e2ef15902ccc5",
+  "cc_file": "models\\spectra_model.cc",
+  "cc_sha256": "560c14e1377a3f0e759f2c9552fc8318bc856c4136f21a55634ae794f67a1b5f",
+  "class_weights": {
+    "0": 0.7835731414868106,
+    "1": 1.3816067653276956
+  },
+  "float_metrics": {
+    "test_loss": 0.0048479656688869,
+    "test_accuracy": 1.0,
+    "precision": 0.9999999999915966,
+    "recall": 0.9999999999915966,
+    "tp": 119,
+    "fp": 0,
+    "fn": 0,
+    "tn": 277
+  }
+}

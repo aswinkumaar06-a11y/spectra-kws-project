@@ -35,9 +35,27 @@ def build_ds_cnn(input_shape):
     outputs = layers.Dense(2, activation="softmax")(x)
     return models.Model(inputs, outputs)
 
-def representative_dataset_gen(X_train, num_samples=100):
-    for i in range(min(num_samples, len(X_train))):
-        yield [X_train[i:i+1].astype(np.float32)]
+def representative_dataset_gen(X_train, y_train=None, num_samples=200, seed=42):
+    """
+    Balanced, representative calibration dataset generator for INT8 post-training quantization.
+    Draws samples evenly across classes with a fixed seed for deterministic calibration.
+    """
+    rng = np.random.default_rng(seed)
+    if y_train is not None:
+        classes = np.unique(y_train)
+        samples_per_class = max(1, num_samples // len(classes))
+        chosen_indices = []
+        for c in classes:
+            c_indices = np.where(y_train == c)[0]
+            chosen = rng.choice(c_indices, size=min(samples_per_class, len(c_indices)), replace=False)
+            chosen_indices.extend(chosen)
+        rng.shuffle(chosen_indices)
+    else:
+        chosen_indices = rng.choice(len(X_train), size=min(num_samples, len(X_train)), replace=False)
+
+    print(f"Calibrating INT8 quantization with {len(chosen_indices)} balanced samples (seed={seed})...")
+    for idx in chosen_indices:
+        yield [X_train[idx:idx+1].astype(np.float32)]
 
 def convert_tflite_to_c_array(tflite_path, c_path, var_name="spectra_model"):
     with open(tflite_path, "rb") as f:
@@ -50,7 +68,16 @@ def convert_tflite_to_c_array(tflite_path, c_path, var_name="spectra_model"):
                 f.write("\n")
         f.write(f"\n}};\nconst unsigned int {var_name}_len = {len(data)};\n")
 
+def get_file_sha256(path):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(8192):
+            h.update(chunk)
+    return h.hexdigest()
+
 if __name__ == "__main__":
+    import json
     os.makedirs(MODELS_DIR, exist_ok=True)
 
     X_train, y_train = load_split("train")
@@ -63,26 +90,37 @@ if __name__ == "__main__":
                    metrics=["accuracy"])
     model.summary()
 
+    # Compute class weights dynamically from y_train
+    classes, counts = np.unique(y_train, return_counts=True)
+    total_samples = len(y_train)
+    n_classes = len(classes)
+    class_weights = {int(cls): float(total_samples / (n_classes * count)) for cls, count in zip(classes, counts)}
+    print(f"Class counts in train split: {dict(zip([int(c) for c in classes], [int(cnt) for cnt in counts]))}")
+    print(f"Computed dynamic class weights: {class_weights}")
+
     early_stop = tf.keras.callbacks.EarlyStopping(
         monitor="val_loss", patience=8, restore_best_weights=True)
 
-    model.fit(X_train, y_train,
-              validation_data=(X_val, y_val),
-              epochs=50,
-              batch_size=32,
-              callbacks=[early_stop])
+    history = model.fit(X_train, y_train,
+                        validation_data=(X_val, y_val),
+                        epochs=50,
+                        batch_size=32,
+                        class_weight=class_weights,
+                        callbacks=[early_stop])
 
     # --- Evaluate on held-out test set (never touched until now) ---
     test_loss, test_acc = model.evaluate(X_test, y_test)
     preds = np.argmax(model.predict(X_test), axis=1)
-    tp = np.sum((preds == 1) & (y_test == 1))
-    fp = np.sum((preds == 1) & (y_test == 0))
-    fn = np.sum((preds == 0) & (y_test == 1))
-    precision = tp / (tp + fp + 1e-9)
-    recall = tp / (tp + fn + 1e-9)
-    print(f"\nTest accuracy: {test_acc:.4f}")
+    tp = int(np.sum((preds == 1) & (y_test == 1)))
+    fp = int(np.sum((preds == 1) & (y_test == 0)))
+    fn = int(np.sum((preds == 0) & (y_test == 1)))
+    tn = int(np.sum((preds == 0) & (y_test == 0)))
+    precision = float(tp / (tp + fp + 1e-9))
+    recall = float(tp / (tp + fn + 1e-9))
+    print(f"\n--- Float32 Model Test Evaluation ---")
+    print(f"Test loss: {test_loss:.4f}  Test accuracy: {test_acc:.4f}")
     print(f"Precision: {precision:.4f}  Recall: {recall:.4f}")
-    print(f"False positives: {fp}  False negatives: {fn}")
+    print(f"TP: {tp}, FP: {fp}, FN: {fn}, TN: {tn}")
 
     # --- Save Keras model ---
     h5_path = os.path.join(MODELS_DIR, "spectra_model.h5")
@@ -92,7 +130,7 @@ if __name__ == "__main__":
     # --- Convert to INT8-quantized TFLite ---
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    converter.representative_dataset = lambda: representative_dataset_gen(X_train)
+    converter.representative_dataset = lambda: representative_dataset_gen(X_train, y_train, num_samples=200, seed=42)
     converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
     converter.inference_input_type = tf.int8
     converter.inference_output_type = tf.int8
@@ -107,3 +145,25 @@ if __name__ == "__main__":
     cc_path = os.path.join(MODELS_DIR, "spectra_model.cc")
     convert_tflite_to_c_array(tflite_path, cc_path)
     print(f"Saved {cc_path}")
+
+    # --- Write Model Manifest with SHA256 Hashes ---
+    manifest = {
+        "h5_file": h5_path,
+        "h5_sha256": get_file_sha256(h5_path),
+        "tflite_file": tflite_path,
+        "tflite_sha256": get_file_sha256(tflite_path),
+        "cc_file": cc_path,
+        "cc_sha256": get_file_sha256(cc_path),
+        "class_weights": class_weights,
+        "float_metrics": {
+            "test_loss": float(test_loss),
+            "test_accuracy": float(test_acc),
+            "precision": precision,
+            "recall": recall,
+            "tp": tp, "fp": fp, "fn": fn, "tn": tn
+        }
+    }
+    manifest_path = os.path.join(MODELS_DIR, "model_manifest.json")
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+    print(f"Saved {manifest_path}")

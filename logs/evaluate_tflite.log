@@ -1,0 +1,40 @@
+============================================================
+  Spectra KWS - Quantitative TFLite INT8 Evaluation
+============================================================
+Model: models/spectra_model.tflite
+  Input Tensor:  shape=[ 1 40 32  1], dtype=<class 'numpy.int8'>, scale=3.996214, zero_point=60
+  Output Tensor: shape=[1 2], dtype=<class 'numpy.int8'>, scale=0.003906, zero_point=-128
+Test Set Size: 396 samples (Class 0: 277, Class 1: 119)
+Decision Threshold: 0.5
+------------------------------------------------------------
+
+--- Quantitative Evaluation Results ---
+Accuracy:    0.9975 (395/396)
+Precision:   0.9917
+Recall:      1.0000
+Specificity: 0.9964
+F1-Score:    0.9958
+Confusion Matrix:
+  True Positives  (TP):  119  | False Positives (FP):    1
+  False Negatives (FN):    0  | True Negatives  (TN):  276
+
+--- Hard Negatives Breakdown (Phonetically Adjacent Words) ---
+  Total Hard Negatives in Test: 24
+  False Triggers (FP):          0
+  Correct Rejections (TN):       24
+  False Activation Rate (FAR):  0.00%
+  True Rejection Rate:          100.00%
+============================================================
+
+[STDERR]
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1788967098.099881   14500 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1788967102.274232   14500 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+D:\spectra-kws-project\venv\Lib\site-packages\tensorflow\lite\python\interpreter.py:457: UserWarning:     Warning: tf.lite.Interpreter is deprecated and is scheduled for deletion in
+    TF 2.20. Please use the LiteRT interpreter from the ai_edge_litert package.
+    See the [migration guide](https://ai.google.dev/edge/litert/migration)
+    for details.
+    
+  warnings.warn(_INTERPRETER_DELETION_WARNING)
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.

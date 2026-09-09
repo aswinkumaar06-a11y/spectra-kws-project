@@ -1,0 +1,77 @@
+Loaded model: models/spectra_model.tflite
+  Input shape: [ 1 40 32  1], dtype: <class 'numpy.int8'>
+  Input quant: (3.9962143898010254, 60)
+  Output shape: [1 2], dtype: <class 'numpy.int8'>
+  Output quant: (0.00390625, -128)
+
+=================================================================
+  Energy Gate Sensitivity & Far-Field Attenuation Evaluation
+=================================================================
+Energy Gate Threshold: 0.03
+Scale Factor    | Peak Amp   | Gate Pass Rate   | Trigger Rate   | Mean Conf
+-----------------------------------------------------------------
+1.000           | 1.000      | 100.0          % | 100.0        % | 0.996
+0.500           | 0.500      | 100.0          % | 100.0        % | 0.996
+0.200           | 0.200      | 100.0          % | 100.0        % | 0.996
+0.100           | 0.100      | 100.0          % | 100.0        % | 0.996
+0.050           | 0.050      | 100.0          % | 100.0        % | 0.996
+0.035           | 0.035      | 100.0          % | 100.0        % | 0.996
+0.020           | 0.020      | 0.0            % | 0.0          % | 0.000
+0.010           | 0.010      | 0.0            % | 0.0          % | 0.000
+=================================================================
+Loaded model: models/spectra_model.tflite
+  Input shape: [ 1 40 32  1], dtype: <class 'numpy.int8'>
+  Input quant: (3.9962143898010254, 60)
+  Output shape: [1 2], dtype: <class 'numpy.int8'>
+  Output quant: (0.00390625, -128)
+
+[Sustained Stream Test] 20 steps (10s audio):
+  Average processing latency: 4.91 ms
+  Maximum processing latency: 7.93 ms
+  Max queue depth:            1
+  Budget per hop:             500.00 ms
+Loaded model: models/spectra_model.tflite
+  Input shape: [ 1 40 32  1], dtype: <class 'numpy.int8'>
+  Input quant: (3.9962143898010254, 60)
+  Output shape: [1 2], dtype: <class 'numpy.int8'>
+  Output quant: (0.00390625, -128)
+
+[STDERR]
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1788967106.743980   23128 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1788967109.472513   23128 port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+test_energy_gate_and_far_field_sensitivity (test_energy_gate.TestEnergyGate.test_energy_gate_and_far_field_sensitivity) ... D:\spectra-kws-project\venv\Lib\site-packages\tensorflow\lite\python\interpreter.py:457: UserWarning:     Warning: tf.lite.Interpreter is deprecated and is scheduled for deletion in
+    TF 2.20. Please use the LiteRT interpreter from the ai_edge_litert package.
+    See the [migration guide](https://ai.google.dev/edge/litert/migration)
+    for details.
+    
+  warnings.warn(_INTERPRETER_DELETION_WARNING)
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+D:\spectra-kws-project\venv\Lib\site-packages\audioread\rawread.py:16: DeprecationWarning: 'aifc' is deprecated and slated for removal in Python 3.13
+  import aifc
+D:\spectra-kws-project\venv\Lib\site-packages\audioread\rawread.py:17: DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13
+  import audioop
+D:\spectra-kws-project\venv\Lib\site-packages\audioread\rawread.py:19: DeprecationWarning: 'sunau' is deprecated and slated for removal in Python 3.13
+  import sunau
+ok
+test_amplitude_normalization (test_feature_parity.TestAudioUtils.test_amplitude_normalization) ... ok
+test_audio_length_fixing (test_feature_parity.TestAudioUtils.test_audio_length_fixing) ... ok
+test_energy_gate (test_feature_parity.TestAudioUtils.test_energy_gate) ... ok
+test_int8_quantization_math (test_feature_parity.TestAudioUtils.test_int8_quantization_math) ... ok
+test_mfcc_shape_and_parity (test_feature_parity.TestAudioUtils.test_mfcc_shape_and_parity) ... ok
+test_sustained_streaming_bounded_queue (test_live_buffering.TestLiveBuffering.test_sustained_streaming_bounded_queue) ... D:\spectra-kws-project\venv\Lib\site-packages\tensorflow\lite\python\interpreter.py:457: UserWarning:     Warning: tf.lite.Interpreter is deprecated and is scheduled for deletion in
+    TF 2.20. Please use the LiteRT interpreter from the ai_edge_litert package.
+    See the [migration guide](https://ai.google.dev/edge/litert/migration)
+    for details.
+    
+  warnings.warn(_INTERPRETER_DELETION_WARNING)
+ok
+test_int8_quantization_clipping_and_rounding (test_model_cli_and_quant.TestModelQuantAndCLI.test_int8_quantization_clipping_and_rounding) ... ok
+test_missing_model_raises_error (test_model_cli_and_quant.TestModelQuantAndCLI.test_missing_model_raises_error) ... ok
+test_spectra_model_loads_and_infers (test_model_cli_and_quant.TestModelQuantAndCLI.test_spectra_model_loads_and_infers) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 5.301s
+
+OK

@@ -1,0 +1,33 @@
+# Spectra Review Bundle - Changelog (v1 to v2)
+Date: September 9, 2026
+
+The original bundle `Spectra_Arena_Review.zip` (200,750 bytes, SHA256: E17621CBBEA453FDCCFF48587E1FA3FCFC2E164FE85A5681EF58EFF575DA4F6A)
+has been preserved intact in the workspace root and artifact directory.
+
+The updated bundle `Spectra_Arena_Review_v2.zip` includes the following evidence clarifications and audit refinements requested by Arena.ai:
+
+1. MANIFEST & SPEAKER IDENTITY CLARIFICATIONS:
+   - Split manifests (`train_manifest.json`, `val_manifest.json`, `test_manifest.json`) now distinguish between:
+     * Human speaker identity (`anonymous_speaker_id`, anonymized consistently via SHA256 across all splits).
+     * Original recording identity (`original_recording_identity`).
+     * Synthetic voice identity (`synthetic_voice_identity`: Microsoft David Desktop vs. Microsoft Zira Desktop).
+     * Synthetic speaking-rate settings (`synthetic_speaking_rate_wpm`: 130, 160, 190, 220).
+     * Augmentation derivative type (`clean_raw` vs. `noise_or_shift`).
+   - `dataset_summary.json` explicitly states that Microsoft Zira Desktop appeared in training at 130/160 WPM, and the 24 synthetic confounder test clips evaluate held-out speaking-rate settings (190/220 WPM) of that known voice, rather than an unseen synthetic speaker.
+
+2. TERMINOLOGY ALIGNMENT IN AUDIT DOCUMENTS:
+   - Changed "verified fixed" to "reported locally tested" for live audio buffering and threshold sweeps until verified by Arena.ai.
+   - Clarified "0 false-positive classifications among 24 synthetic confounder clips" rather than claiming a zero continuous false-activation rate across streaming audio.
+   - Labeled the 10-second live buffering test as a "short streaming smoke test" rather than long-duration validation.
+   - Explicitly distinguished processing time per 500ms hop (4.91 ms avg) from end-to-end wake-word detection latency.
+   - Distinguished classifier-only evaluation on isolated clips from real-time energy-gated streaming.
+   - Clarified that class weighting is implemented and active in training, but does not mathematically prove elimination of all bias.
+
+3. REVISION & PROVENANCE RECORD:
+   - `revision.txt` updated to include exact environment versions (Python 3.11.9, Windows 11, TF 2.21.0, Librosa 0.11.0, NumPy 2.4.6, SoundFile 0.14.0), execution commands, timestamps, and return codes.
+   - Detailed chronology and explanation of `noise_pools.json` creation and string deduplication.
+
+4. UNTOUCHED MODEL ARTIFACTS & LOGS:
+   - Zero model retrainings or pipeline reruns were performed.
+   - `models/spectra_model.tflite`, `models/spectra_model.cc`, and `models/model_manifest.json` are identical to v1.
+   - `logs/evaluate_tflite.log` and `logs/unittest_verbose.log` contain the exact execution outputs.
