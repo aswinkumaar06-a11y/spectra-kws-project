@@ -3,3 +3,5 @@ dataset/raw/
 dataset/augmented/
 dataset/splits/
 *.wav
+dataset/features/  
+ 
