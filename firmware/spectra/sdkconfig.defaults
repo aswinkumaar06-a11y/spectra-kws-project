@@ -1,35 +1,34 @@
 # -------------------------------------------------------
-# Spectra KWS — ESP32-S3 sdkconfig defaults
+# Spectra KWS — XIAO ESP32-C5 sdkconfig defaults
+# Requires ESP-IDF v5.5.2+
 # -------------------------------------------------------
 
-# Target
-CONFIG_IDF_TARGET="esp32s3"
+# Target: ESP32-C5 (RISC-V single-core)
+CONFIG_IDF_TARGET="esp32c5"
 
-# Flash size (8 MB for N8R2)
+# Flash size (8 MB — XIAO ESP32C5 has 8MB flash)
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 
-# PSRAM (2 MB for N8R2, octal SPI)
-CONFIG_ESP32S3_SPIRAM_SUPPORT=y
+# PSRAM (8 MB — XIAO ESP32C5 has 8MB PSRAM via SPI)
 CONFIG_SPIRAM=y
-CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 
-# Use custom partition table
+# Use custom partition table (NVS only, no SPIFFS)
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
-# Stack sizes — TFLM needs generous stack
+# Stack sizes — TFLM + AllOpsResolver needs generous stack
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 
 # Logging
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
 
-# Compiler optimization — performance over size for DSP
+# Compiler optimization — performance for DSP/inference
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
-# FreeRTOS tick rate — 1ms ticks for accurate timing
+# FreeRTOS tick rate — 1ms ticks for accurate audio timing
 CONFIG_FREERTOS_HZ=1000
 
-# Watchdog — disable during dev (TFLM init can be slow)
+# Watchdog — extended during dev (TFLM AllOpsResolver init can be slow)
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=30

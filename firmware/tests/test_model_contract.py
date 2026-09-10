@@ -127,7 +127,7 @@ def test_model_contract():
     print()
     print("=" * 60)
     print("  ALL CONTRACT CHECKS PASSED")
-    print("  Model is safe to embed in ESP32-S3 firmware")
+    print("  Model is safe to embed in XIAO ESP32-C5 firmware")
     print("=" * 60)
 
 

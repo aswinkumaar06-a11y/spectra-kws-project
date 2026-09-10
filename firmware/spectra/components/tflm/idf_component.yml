@@ -1,6 +1,7 @@
 ## IDF Component Manager Manifest
-## See https://docs.espressif.com/projects/idf-component-manager/en/latest/
+## Requires ESP-IDF v5.5.2+ for ESP32-C5 support
+## See https://components.espressif.com/components/espressif/esp-tflite-micro
 
 dependencies:
-  espressif/tflite-micro:
-    version: "~1.0.0"
+  espressif/esp-tflite-micro:
+    version: "*"

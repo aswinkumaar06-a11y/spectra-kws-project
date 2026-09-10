@@ -1,4 +1,4 @@
-# Spectra KWS — ESP32-S3 Firmware
+# Spectra KWS — XIAO ESP32-C5 Firmware
 # Top-level ESP-IDF project file
 
 cmake_minimum_required(VERSION 3.16)
