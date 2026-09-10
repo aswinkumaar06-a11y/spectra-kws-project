@@ -2,8 +2,13 @@ idf_component_register(
     SRCS
         "main.cc"
         "model_data.cc"
+        "audio_ring.cc"
+        "audio_capture.cc"
+        "wav_injector.cc"
     INCLUDE_DIRS
         "."
     REQUIRES
         tflm
+        driver
+        esp_driver_i2s
 )
