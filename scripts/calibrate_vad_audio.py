@@ -36,6 +36,10 @@ def calibrate_from_audio(audio_data, sr=16000):
     if sr != 16000:
         raise ValueError(f"Expected 16 kHz audio, got {sr} Hz")
 
+    if audio_data.ndim > 1:
+        # Gracefully downmix stereo/multichannel to mono
+        audio_data = np.mean(audio_data, axis=1)
+
     rms_arr = compute_rms_frames(audio_data)
     if len(rms_arr) == 0:
         raise ValueError("Audio too short for 100 ms frame analysis")

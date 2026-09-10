@@ -115,6 +115,19 @@ def analyze_log_content(log_text, declared_hours=None):
         print(f"  Minimum Internal SRAM Free: {min_sram_bytes} bytes (Target: > 45,000 B)")
         print(f"  Memory Leak Detected:       {'NO' if min_sram_bytes > 45000 else 'YES'}")
 
+    print("\n--- Acceptance Bar Verdict ---")
+    if num_triggers == 0 and effective_hours >= 10.0:
+        verdict = "PASS"
+        verdict_detail = f"0 FAs observed over {effective_hours:.1f} h (Poisson 95% bound < {poisson_95_upper:.3f} / h satisfies < 1.0/h bar with margin)"
+    elif num_triggers == 0:
+        verdict = "INCONCLUSIVE (WEAK)"
+        verdict_detail = f"0 FAs observed over {effective_hours:.1f} h (Duration too short: Poisson bound < {poisson_95_upper:.2f}/h cannot claim < 1.0/h)"
+    else:
+        verdict = "FAIL"
+        verdict_detail = f"{num_triggers} false triggers observed on keyword-free audio (Measured rate: {fa_rate:.2f}/h, fails 0-FA soak bar)"
+
+    print(f"  VERDICT: {verdict}")
+    print(f"  Detail:  {verdict_detail}")
     print("=" * 72)
 
     return {

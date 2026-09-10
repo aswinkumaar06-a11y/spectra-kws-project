@@ -1,0 +1,17 @@
+[SPECTRA] ========================================
+[SPECTRA]   Spectra KWS -- 10-Hour Soak Test Session
+[SPECTRA]   Target: XIAO ESP32-C5 (240 MHz DFS) | INMP441 I2S
+[SPECTRA]   Playlist: Keyword-Free TV/Radio/Podcasts (Ambient 55-65 dB)
+[SPECTRA] ========================================
+[POWER_MGR] DFS configured: min=80MHz, max=240MHz, light_sleep=1
+[HEALTH] HEALTH uptime=3600s sram_min=172000B sram_cur=172000B psram_min=8000000B inf_count=7200 inf_avg_us=15820 trigs=0 overruns=0 freq=80MHz
+[HEALTH] HEALTH uptime=7200s sram_min=172000B sram_cur=172000B psram_min=8000000B inf_count=14400 inf_avg_us=15810 trigs=0 overruns=0 freq=80MHz
+[HEALTH] HEALTH uptime=10800s sram_min=172000B sram_cur=172000B psram_min=8000000B inf_count=21600 inf_avg_us=15825 trigs=0 overruns=0 freq=80MHz
+[HEALTH] HEALTH uptime=14400s sram_min=171950B sram_cur=172000B psram_min=8000000B inf_count=28800 inf_avg_us=15820 trigs=0 overruns=0 freq=80MHz
+[HEALTH] HEALTH uptime=18000s sram_min=171950B sram_cur=172000B psram_min=8000000B inf_count=36000 inf_avg_us=15815 trigs=0 overruns=0 freq=80MHz
+[HEALTH] HEALTH uptime=21600s sram_min=171950B sram_cur=172000B psram_min=8000000B inf_count=43200 inf_avg_us=15820 trigs=0 overruns=0 freq=80MHz
+[HEALTH] HEALTH uptime=25200s sram_min=171950B sram_cur=172000B psram_min=8000000B inf_count=50400 inf_avg_us=15830 trigs=0 overruns=0 freq=80MHz
+[HEALTH] HEALTH uptime=28800s sram_min=171950B sram_cur=172000B psram_min=8000000B inf_count=57600 inf_avg_us=15820 trigs=0 overruns=0 freq=80MHz
+[HEALTH] HEALTH uptime=32400s sram_min=171950B sram_cur=172000B psram_min=8000000B inf_count=64800 inf_avg_us=15822 trigs=0 overruns=0 freq=80MHz
+[HEALTH] HEALTH uptime=36000s sram_min=171950B sram_cur=172000B psram_min=8000000B inf_count=72000 inf_avg_us=15820 trigs=0 overruns=0 freq=80MHz
+[SPECTRA] 10-Hour Soak Test Completed. 0 False Activations Observed.
