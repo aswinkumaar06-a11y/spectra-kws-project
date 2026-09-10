@@ -1,0 +1,6 @@
+## IDF Component Manager Manifest
+## See https://docs.espressif.com/projects/idf-component-manager/en/latest/
+
+dependencies:
+  espressif/tflite-micro:
+    version: "~1.0.0"

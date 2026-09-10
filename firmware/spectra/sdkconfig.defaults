@@ -1,0 +1,35 @@
+# -------------------------------------------------------
+# Spectra KWS — ESP32-S3 sdkconfig defaults
+# -------------------------------------------------------
+
+# Target
+CONFIG_IDF_TARGET="esp32s3"
+
+# Flash size (8 MB for N8R2)
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+
+# PSRAM (2 MB for N8R2, octal SPI)
+CONFIG_ESP32S3_SPIRAM_SUPPORT=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# Use custom partition table
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Stack sizes — TFLM needs generous stack
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# Logging
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
+
+# Compiler optimization — performance over size for DSP
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# FreeRTOS tick rate — 1ms ticks for accurate timing
+CONFIG_FREERTOS_HZ=1000
+
+# Watchdog — disable during dev (TFLM init can be slow)
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
