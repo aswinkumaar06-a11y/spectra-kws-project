@@ -198,10 +198,10 @@ firmware/
 │   ├── sdkconfig.defaults          ← XIAO ESP32-C5 config (IDF v5.5.2+, PSRAM enabled)
 │   ├── partitions.csv              ← NVS + app partition (no SPIFFS)
 │   ├── main/
-│   │   ├── CMakeLists.txt          ← Component registration (I2S, TFLM, GPIO, NVS, WiFi, LwIP)
-│   │   ├── Kconfig.projbuild       ← Menuconfig options (mic GPIOs, trigger, Wi-Fi, ASR server)
-│   │   ├── main.cc                 ← Entry: TFLM verify + PSRAM ring + MFCC + Trigger
-│   │   ├── spectra_config.h        ← Frozen contract: GPIOs, buffer, MFCC, TFLM, VAD, Stream
+│   │   ├── CMakeLists.txt          ← Component registration (I2S, TFLM, GPIO, NVS, WiFi, LwIP, PM)
+│   │   ├── Kconfig.projbuild       ← Menuconfig options (mic, trigger, Wi-Fi, DFS, Watchdog)
+│   │   ├── main.cc                 ← Entry: TFLM verify + PSRAM ring + MFCC + Trigger + Power + Guard
+│   │   ├── spectra_config.h        ← Frozen contract: GPIOs, buffer, MFCC, TFLM, VAD, Power, Watchdog
 │   │   ├── audio_capture.h/.cc     ← INMP441 I2S standard RX driver with DMA
 │   │   ├── audio_ring.h/.cc        ← PSRAM circular buffer with drop-oldest overrun policy
 │   │   ├── wav_injector.h/.cc      ← Deterministic synthetic test injector & CRC-32 engine
@@ -212,6 +212,11 @@ firmware/
 │   │   ├── trigger.h/.cc           ← Trigger state machine (LISTEN, CANDIDATE, TRIGGERED, COOLDOWN)
 │   │   ├── pre_roll.h              ← Pre-roll audio window freeze buffer (16,000 int16 samples)
 │   │   ├── vad.h/.cc               ← Endpoint VAD (100 ms RMS frames, TH=0.02, deterministic state machine)
+│   │   ├── vad_calib.h/.cc         ← Acoustic VAD noise floor auto-calibration (clamped [0.012, 0.060])
+│   │   ├── power_mgr.h/.cc         ← Dynamic Frequency Scaling (80/240 MHz), power locks, light sleep
+│   │   ├── watchdog.h/.cc          ← Multi-channel Task Watchdog Timer supervisor (audio, infer, stream)
+│   │   ├── boot_guard.h/.cc        ← NVS Boot-loop guard (3-crash tripwire to Safe Mode with 5-pulse alert)
+│   │   ├── health_diag.h/.cc       ← Production health diagnostics & memory telemetry formatter
 │   │   ├── netwrap.h/.cc           ← Cross-platform socket abstraction (ESP-IDF LwIP / Host Winsock)
 │   │   ├── streamer.h/.cc          ← Streamer coordinator (pre-roll + live chunks + VAD endpoint)
 │   │   ├── stream_proto.h          ← Binary streaming framing protocol (SP magic, CRC-16)
@@ -241,6 +246,10 @@ firmware/
     ├── test_trigger_host.c         ← C host test for Trigger state machine (Streams A, B, C, D)
     ├── feed_pstream.py             ← Python UART probability feeder for trigger demo
     ├── test_vad_host.c             ← C host test for Endpoint VAD (V1, V2, V3) & U2 boundary
+    ├── test_calib_host.c           ← C host test for Acoustic VAD auto-calibration (8 assertions)
+    ├── test_power_sim.py           ← Python duty cycle and battery simulation (DFS & light sleep)
+    ├── test_boot_guard_host.c      ← C host test for Boot-loop Guard & Watchdog (11 assertions)
+    ├── test_health_diag_host.c     ← C host test for Diagnostic Telemetry (8 assertions)
     ├── test_streamer_c_host.c      ← C host test for streamer connecting to ASR server
     ├── test_stream_proto.py        ← Python streaming protocol & TCP loopback test suite
     └── feed_pcm.py                 ← Python test feeder streaming audio to ASR server
@@ -264,6 +273,8 @@ firmware/
 | **3** | **TFLM inference + Memory discipline** | Minimal resolver <5>, arena in BSS, logits parity | **HOST-PASS** (Equivalence on HW pending) |
 | **4** | **Confidence trigger + LED demo** | State machine (N=3, CD=4), pre-roll freeze, NVS | **HOST-PASS** (Live demo on HW pending) |
 | **5** | **Streaming + ASR (faster-whisper)** | Endpoint VAD, Binary framing, 10s cap, laptop TCP server | **HOST-PASS** (Device Wi-Fi pending) |
-| 6 | Power optimization | Dynamic frequency scaling & sleep modes | ⬜ Planned |
-| 7 | Production hardening | Watchdog, brownout, fail-safe recovery | ⬜ Planned |
+| **6** | **Power optimization & VAD calibration** | DFS (80/240 MHz), Power locks, noise auto-calibration | **HOST-PASS** (Power analyzer pending) |
+| **7** | **Production hardening & resilience** | Multi-channel TWDT, NVS Boot-loop guard, Safe Mode | **HOST-PASS** (Hardware fault pending) |
+| **8** | **Hardware Execution Runbook** | Physical wiring, 6 validation gates, on-device runbook | **COMPLETED** (`docs/HARDWARE_RUNBOOK.md`) |
+
 

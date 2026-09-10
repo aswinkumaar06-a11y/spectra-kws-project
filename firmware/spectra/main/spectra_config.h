@@ -93,6 +93,16 @@
 #define SPECTRA_STREAM_SERVER_PORT     8765     // Default TCP port for ASR server
 #define SPECTRA_STREAM_MAX_DURATION_S  10       // 10 second hard cap on utterance streaming
 #define SPECTRA_STREAM_MAX_FRAMES      100      // 100 frames * 100 ms = 10.0 s
+// ─── Phase 6: Power Optimization & Calibration ───────────────────────────
+#define SPECTRA_POWER_DFS_MAX_MHZ      240      // 240 MHz active clock
+#define SPECTRA_POWER_DFS_MIN_MHZ      80       // 80 MHz idle listening clock
+#define SPECTRA_VAD_CALIB_FRAMES       20       // 20 x 100 ms = 2.0s acoustic sampling
+
+// ─── Phase 7: Production Hardening & Watchdog ──────────────────────────────
+#define SPECTRA_WATCHDOG_TIMEOUT_MS    3000     // 3.0 second task watchdog timeout
+#define SPECTRA_BOOT_GUARD_MAX_CRASHES 3        // 3 consecutive crashes activates SAFE MODE
+#define SPECTRA_BOOT_GUARD_HEALTHY_MS  30000    // 30 seconds stable runtime clears crashes
+
 // ─── GPIO Definitions (XIAO ESP32-C5) ─────────────────────────────────────
 #define SPECTRA_LED_GPIO               27       // Active HIGH user LED (fallback 15 configurable via Kconfig)
 #define SPECTRA_BOOT_BUTTON_GPIO       28       // XIAO ESP32-C5 BOOT button (abort trigger)

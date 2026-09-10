@@ -172,3 +172,50 @@ menu "Spectra Phase 5 Streaming & ASR Configuration"
 
 endmenu
 
+menu "Spectra Phase 6 Power Optimization & Calibration"
+
+    config SPECTRA_PM_ENABLE_DFS
+        bool "Enable Dynamic Frequency Scaling (DFS: 80-240 MHz)"
+        default y
+        help
+            Enables dynamic clock scaling. Scales CPU to 240 MHz during active
+            MFCC DSP, TFLM inference, and Wi-Fi streaming, dropping to 80 MHz during idle.
+
+    config SPECTRA_PM_LIGHT_SLEEP
+        bool "Enable FreeRTOS Light Sleep during idle hop windows"
+        default y
+        help
+            Enables tickless light sleep between 500 ms inference hops,
+            reducing idle current draw to ~2.5 mA.
+
+    config SPECTRA_VAD_AUTO_CALIBRATE
+        bool "Enable boot-time acoustic noise floor auto-calibration"
+        default y
+        help
+            Samples 2.0s of background acoustic noise on boot and tunes VAD threshold.
+
+endmenu
+
+menu "Spectra Phase 7 Production Hardening & Resilience"
+
+    config SPECTRA_TWDT_ENABLE
+        bool "Enable Task Watchdog Timer (TWDT)"
+        default y
+        help
+            Supervises audio capture, inference, and streaming tasks with a 3.0s timeout.
+
+    config SPECTRA_BOOT_GUARD_ENABLE
+        bool "Enable NVS Boot-Loop Guard & Safe Mode"
+        default y
+        help
+            Detects 3 consecutive crashes and enters Safe Mode with visual alert.
+
+    config SPECTRA_HEALTH_DIAG_LOG_INTERVAL_S
+        int "Health telemetry UART log interval in seconds"
+        default 30
+        range 5 300
+        help
+            Interval for periodic system health diagnostic telemetry logging.
+
+endmenu
+

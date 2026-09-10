@@ -12,6 +12,11 @@ idf_component_register(
         "vad.cc"
         "netwrap.cc"
         "streamer.cc"
+        "power_mgr.cc"
+        "vad_calib.cc"
+        "watchdog.cc"
+        "boot_guard.cc"
+        "health_diag.cc"
     INCLUDE_DIRS
         "."
     REQUIRES
@@ -23,4 +28,6 @@ idf_component_register(
         esp_wifi
         esp_netif
         lwip
+        esp_pm
+        esp_hw_support
 )

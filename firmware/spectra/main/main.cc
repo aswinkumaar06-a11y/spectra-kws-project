@@ -36,6 +36,11 @@
 #include "trigger.h"
 #include "pre_roll.h"
 #include "esp_timer.h"
+#include "power_mgr.h"
+#include "vad_calib.h"
+#include "watchdog.h"
+#include "boot_guard.h"
+#include "health_diag.h"
 
 static const char* TAG = "SPECTRA";
 
@@ -289,7 +294,14 @@ static void run_pipeline_audio(void) {
     ESP_LOGI(TAG, "Entering continuous audio & feature extraction loop...");
     ESP_LOGI(TAG, "========================================");
 
-    // ── 5. Continuous Streaming / Feature Extraction Loop ───────────────
+    // ── 5. Initialize VAD Auto-Calibration & Supervised Watchdogs ───────
+    static vad_calib_context_t s_vad_calib;
+    vad_calib_init(&s_vad_calib, VAD_CALIB_DEFAULT_FRAMES);
+
+    watchdog_enable_channel(WATCHDOG_CHAN_AUDIO);
+    watchdog_enable_channel(WATCHDOG_CHAN_INFER);
+
+    // ── 6. Continuous Streaming / Feature Extraction Loop ───────────────
     uint64_t total_samples_captured = 0;
     uint32_t total_hops_processed = 0;
     uint32_t loop_count = 0;
@@ -301,14 +313,33 @@ static void run_pipeline_audio(void) {
                                                 &samples_read,
                                                 300);
 
+        uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+
         if (read_err == ESP_OK && samples_read > 0) {
             audio_ring_write(s_capture_block, samples_read);
             total_samples_captured += samples_read;
+            watchdog_feed(WATCHDOG_CHAN_AUDIO, now_ms);
+
+            // Background acoustic noise floor auto-calibration
+            if (!s_vad_calib.is_complete && samples_read >= 3200) {
+                vad_calib_feed_pcm(&s_vad_calib, &s_capture_block[0]);
+                if (!s_vad_calib.is_complete) {
+                    vad_calib_feed_pcm(&s_vad_calib, &s_capture_block[1600]);
+                }
+            }
         } else {
             // If I2S hardware mic not connected, inject synthetic block for soak simulation
             wav_injector_generate_block(s_capture_block, SPECTRA_CAPTURE_BLOCK_SAMPLES);
             audio_ring_write(s_capture_block, SPECTRA_CAPTURE_BLOCK_SAMPLES);
             total_samples_captured += SPECTRA_CAPTURE_BLOCK_SAMPLES;
+            watchdog_feed(WATCHDOG_CHAN_AUDIO, now_ms);
+
+            if (!s_vad_calib.is_complete) {
+                vad_calib_feed_pcm(&s_vad_calib, &s_capture_block[0]);
+                if (!s_vad_calib.is_complete) {
+                    vad_calib_feed_pcm(&s_vad_calib, &s_capture_block[1600]);
+                }
+            }
             vTaskDelay(pdMS_TO_TICKS(250)); // Simulates 0.25s audio arrival rate
         }
 
@@ -328,6 +359,9 @@ static void run_pipeline_audio(void) {
             float peak_norm = (float)peak / 32768.0f;
             float rms = sqrtf((float)sum_sq / SPECTRA_WINDOW_SAMPLES) / 32768.0f;
 
+            // Power Lock: Boost CPU to 240 MHz for compute-intensive DSP + TFLM
+            power_lock_acquire(POWER_CLIENT_DSP_INFERENCE);
+
             // Phase 2: Compute 40x32 MFCC Features + Energy Gating
             int64_t t_start = esp_timer_get_time();
             bool voiced = mfcc_process_window(s_audio_window, s_mfcc_float, s_mfcc_int8);
@@ -346,15 +380,35 @@ static void run_pipeline_audio(void) {
                 }
             }
 
+            // Release power lock: allows DFS to drop clock to 80 MHz / idle
+            power_lock_release(POWER_CLIENT_DSP_INFERENCE);
+
+            // Supervised TWDT: Feed inference channel
+            now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+            watchdog_feed(WATCHDOG_CHAN_INFER, now_ms);
+
             // Phase 4: Trigger State Machine Evaluation (Tick = 500 ms hop)
-            uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
-            trigger_tick(p_pos, total_hops_processed, now_ms, s_audio_window);
+            bool fired = trigger_tick(p_pos, total_hops_processed, now_ms, s_audio_window);
+            if (fired) {
+                health_diag_record_trigger();
+                ESP_LOGI(TAG, ">>> KEYWORD TRIGGERED! Event fired on hop %u <<<", (unsigned)total_hops_processed);
+            }
+
+            // Update System Health & Diagnostic Telemetry
+            health_diag_update(now_ms, (uint32_t)tflm_us);
 
             // Check UART for test runner packet
             logits_test_poll_uart();
 
             // Advance read pointer by 0.5s hop (50% overlap)
             audio_ring_advance(SPECTRA_HOP_SAMPLES);
+
+            // Mark system boot healthy after running stably for 30 seconds
+            static bool s_marked_healthy = false;
+            if (!s_marked_healthy && now_ms >= BOOT_GUARD_HEALTHY_MS) {
+                boot_guard_mark_healthy();
+                s_marked_healthy = true;
+            }
 
             // Log telemetry every 10 hops (~5 seconds)
             if (total_hops_processed % 10 == 0) {
@@ -366,8 +420,9 @@ static void run_pipeline_audio(void) {
                          p_pos, (unsigned)t_ctx->total_triggers);
             }
 
-            // Log detailed heap health every 60 hops (~30 seconds)
+            // Log detailed health diagnostic summary every 60 hops (~30 seconds)
             if (total_hops_processed % 60 == 0) {
+                health_diag_log_periodic(now_ms, 0); // Force immediate periodic output
                 print_heap_report();
             }
         }
@@ -377,13 +432,30 @@ static void run_pipeline_audio(void) {
 }
 
 extern "C" void app_main(void) {
+    // ── Early Boot-Loop Guard (Tripwire to Safe Mode on 3 crashes) ───────
+    boot_mode_t bmode = boot_guard_check();
+    if (bmode == BOOT_MODE_SAFE) {
+        ESP_LOGE(TAG, "CRITICAL: Boot-loop guard tripwire reached! Entering SAFE MODE");
+        led_init();
+        while (true) {
+            boot_guard_indicate_safe_mode();
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        return;
+    }
+
     // ── LED init (board-alive proof) ────────────────────────────────────
     led_init();
 
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  Spectra KWS — Phase 4: Trigger & LED");
+    ESP_LOGI(TAG, "  Spectra KWS — Production Firmware");
     ESP_LOGI(TAG, "  Board: XIAO ESP32-C5 (RISC-V @ 240 MHz)");
     ESP_LOGI(TAG, "========================================");
+
+    // ── Power Management, Task Watchdog & Health Telemetry Init ────────
+    power_mgr_init(true);
+    watchdog_init(SPECTRA_WATCHDOG_TIMEOUT_MS);
+    health_diag_init();
 
     // ── Heap report (pre-initialization) ────────────────────────────────
     ESP_LOGI(TAG, "--- Heap (pre-model) ---");
