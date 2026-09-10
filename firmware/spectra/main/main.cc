@@ -33,6 +33,8 @@
 #include "mfcc.h"
 #include "tflm.h"
 #include "logits_test.h"
+#include "trigger.h"
+#include "pre_roll.h"
 #include "esp_timer.h"
 
 static const char* TAG = "SPECTRA";
@@ -324,7 +326,6 @@ static void run_pipeline_audio(void) {
                 sum_sq += ((int32_t)s * (int32_t)s);
             }
             float peak_norm = (float)peak / 32768.0f;
-            float peak_norm = (float)peak / 32768.0f;
             float rms = sqrtf((float)sum_sq / SPECTRA_WINDOW_SAMPLES) / 32768.0f;
 
             // Phase 2: Compute 40x32 MFCC Features + Energy Gating
@@ -335,18 +336,19 @@ static void run_pipeline_audio(void) {
             // Phase 3: TFLM Inference on Voiced Audio
             tflm_result_t tflm_res = {0};
             int64_t tflm_us = 0;
+            float p_pos = 0.0f;
             if (voiced) {
                 int64_t t_inf = esp_timer_get_time();
                 tflm_feed_input(s_mfcc_int8);
                 if (tflm_invoke(&tflm_res)) {
                     tflm_us = esp_timer_get_time() - t_inf;
-                    if (tflm_res.p_pos >= SPECTRA_POSITIVE_THRESHOLD) {
-                        ESP_LOGI(TAG, ">>> KEYWORD DETECTED! P(\"Spectra\") = %.4f | Total Latency: %.1f ms <<<",
-                                 tflm_res.p_pos, (float)(mfcc_us + tflm_us) / 1000.0f);
-                        led_blink(2);
-                    }
+                    p_pos = tflm_res.p_pos;
                 }
             }
+
+            // Phase 4: Trigger State Machine Evaluation (Tick = 500 ms hop)
+            uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+            trigger_tick(p_pos, total_hops_processed, now_ms, s_audio_window);
 
             // Check UART for test runner packet
             logits_test_poll_uart();
@@ -357,11 +359,11 @@ static void run_pipeline_audio(void) {
             // Log telemetry every 10 hops (~5 seconds)
             if (total_hops_processed % 10 == 0) {
                 audio_ring_get_stats(&ring_stats);
-                ESP_LOGI(TAG, "[SOAK] Hop: %u | Peak: %.3f | Voiced: %s | MFCC: %lld us | TFLM: %lld us | P(\"Spectra\"): %.4f | Overruns: %u",
+                const trigger_context_t* t_ctx = trigger_get_context();
+                ESP_LOGI(TAG, "[SOAK] Hop: %u | Peak: %.3f | Voiced: %s | MFCC: %lld us | TFLM: %lld us | P(\"Spectra\"): %.4f | Trigs: %u",
                          total_hops_processed, peak_norm,
                          voiced ? "YES" : "NO", (long long)mfcc_us, (long long)tflm_us,
-                         tflm_res.p_pos, ring_stats.overrun_count);
-                led_toggle(); // Heartbeat pulse
+                         p_pos, (unsigned)t_ctx->total_triggers);
             }
 
             // Log detailed heap health every 60 hops (~30 seconds)
@@ -379,7 +381,7 @@ extern "C" void app_main(void) {
     led_init();
 
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  Spectra KWS — Phase 3: TFLM Bring-up");
+    ESP_LOGI(TAG, "  Spectra KWS — Phase 4: Trigger & LED");
     ESP_LOGI(TAG, "  Board: XIAO ESP32-C5 (RISC-V @ 240 MHz)");
     ESP_LOGI(TAG, "========================================");
 
@@ -412,9 +414,19 @@ extern "C" void app_main(void) {
     // ── Step 4: Measured Memory Budget Audit (< 256 KB Internal SRAM) ───
     logits_test_print_memory_budget();
 
-    // ── Step 5: LED Proof ───────────────────────────────────────────────
+    // ── Step 5: Initialize Phase 4 Trigger Subsystem & Autonomous Self-Test ─
+    trigger_init();
+    ESP_LOGI(TAG, "Running Phase 4 Trigger Self-Test (Stream D)...");
+    if (!trigger_run_selftest_stream_d()) {
+        ESP_LOGE(TAG, "FATAL: Trigger self-test on Stream D failed");
+        led_steady_on();
+        return;
+    }
+    ESP_LOGI(TAG, "Phase 4 Trigger Self-Test: Stream D [2, 9] PASS");
+
+    // ── Step 6: LED Proof ───────────────────────────────────────────────
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "Phase 3 PASS — TFLM Inference & Memory Verified");
+    ESP_LOGI(TAG, "Phase 4 PASS — Trigger & LED Operational");
     ESP_LOGI(TAG, "========================================");
     led_blink(3);  // 3 blinks = PASS
 

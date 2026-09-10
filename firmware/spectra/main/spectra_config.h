@@ -74,13 +74,16 @@
 #define SPECTRA_MAX_INFERENCE_MS   200.0f   // Soft budget per invoke @ 240 MHz (hop budget < 250 ms)
 #define SPECTRA_TARGET_SRAM_KB     256      // Internal SRAM budget discipline
 
-// Decision threshold for positive classification (post-dequantization).
-#define SPECTRA_POSITIVE_THRESHOLD 0.5f
+// ─── Phase 4: Trigger & LED Demo Constants ─────────────────────────────────
+#define SPECTRA_TRIGGER_THRESHOLD      0.5f     // P(pos) strictly greater counts (> 0.5)
+#define SPECTRA_TRIGGER_N_FIRE         3        // N=3 consecutive ticks required to fire
+#define SPECTRA_TRIGGER_COOLDOWN_TICKS 4        // 4 ticks (= 2.0 s @ 500ms hop) cooldown
+#define SPECTRA_PRE_ROLL_SAMPLES       16000    // 1.0s (16000 int16 samples = 32 KB internal SRAM)
 
 // ─── Model Metadata ────────────────────────────────────────────────────────
 #define SPECTRA_MODEL_SIZE_BYTES   39552
 
 // ─── Board: XIAO ESP32-C5 ──────────────────────────────────────────────────
-#define SPECTRA_LED_GPIO           27       // Active HIGH
+#define SPECTRA_LED_GPIO           27       // Active HIGH (fallback 15 configurable via Kconfig)
 
 #endif  // SPECTRA_CONFIG_H_

@@ -72,3 +72,59 @@ menu "Spectra KWS TFLM Inference Configuration"
             asserting bit-identical logits and classification accuracy.
 
 endmenu
+
+menu "Spectra KWS Trigger & Demo Configuration"
+
+    choice SPECTRA_TRIGGER_DEMO_SRC
+        prompt "Trigger Demo Input Source"
+        default SPECTRA_TRIGGER_DEMO_SRC_LIVE
+        help
+            Select whether trigger consumes P(pos) from live pipeline (I2S mic)
+            or from UART serial stream (feed_pstream.py).
+
+        config SPECTRA_TRIGGER_DEMO_SRC_LIVE
+            bool "Live pipeline (INMP441 I2S mic -> MFCC -> TFLM)"
+
+        config SPECTRA_TRIGGER_DEMO_SRC_UART
+            bool "UART serial stream (P(pos) fed over UART without mic)"
+    endchoice
+
+    config SPECTRA_TRIGGER_BOOT_SELFTEST
+        bool "Run trigger self-test on Stream D on boot"
+        default y
+        help
+            Executes autonomous on-device test evaluating Stream D vectors
+            asserting events [2, 9] and LED transitions.
+
+    config SPECTRA_LED_GPIO
+        int "User Status LED GPIO"
+        default 27
+        help
+            GPIO connected to user LED (27 on XIAO ESP32-C5, fallback 15).
+            Active HIGH.
+
+    config SPECTRA_TRIGGER_THRESHOLD_MILLI
+        int "Trigger threshold in thousandths (e.g. 500 = 0.50)"
+        default 500
+        range 100 990
+        help
+            Threshold probability for P("Spectra") in thousandths.
+            Default 500 represents 0.50.
+
+    config SPECTRA_TRIGGER_N_FIRE
+        int "Consecutive hops above threshold to fire (N_FIRE)"
+        default 3
+        range 1 10
+        help
+            Number of consecutive hop ticks (500 ms each) required to fire.
+
+    config SPECTRA_TRIGGER_COOLDOWN
+        int "Cooldown ticks after fire (COOLDOWN_TICKS)"
+        default 4
+        range 1 20
+        help
+            Number of ticks (500 ms each) to suppress triggers after firing.
+            Default 4 ticks = 2.0 seconds.
+
+endmenu
+

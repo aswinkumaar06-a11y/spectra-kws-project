@@ -8,10 +8,13 @@ idf_component_register(
         "mfcc.cc"
         "tflm.cc"
         "logits_test.cc"
+        "trigger.cc"
     INCLUDE_DIRS
         "."
     REQUIRES
         tflm
         esp_driver_i2s
+        esp_driver_gpio
         esp_timer
+        nvs_flash
 )

@@ -150,25 +150,31 @@ venv\Scripts\python.exe -m unittest firmware/tests/test_mfcc_parity.py
 venv\Scripts\python.exe -m unittest firmware/tests/test_logits_parity.py
 ```
 
-### 7. Phase 3 Hardware Over-the-UART 50-Clip Parity Test (Optional)
+### 8. Phase 4 Trigger State Machine & LED Demo Host Test
 ```bash
-venv\Scripts\python.exe firmware/tests/test_logits_parity.py --port COM3 --baud 115200
+gcc -Wall -Wextra -O2 -DSPECTRA_HOST_TEST -I firmware/spectra/main firmware/tests/test_trigger_host.c firmware/spectra/main/trigger.cc -o test_trigger_host.exe
+./test_trigger_host.exe
+```
+
+### 9. Phase 4 Serial Probability Stream Feeder (Hardware Demo)
+```bash
+python firmware/tests/feed_pstream.py --port COM3 --stream D
 ```
 
 ## Project Structure
 
 ```
 firmware/
-├── README.md                       ← Firmware documentation and phase tracker
+├── README.md                       ← Firmware documentation, phase tracker & vocabulary
 ├── spectra/
 │   ├── CMakeLists.txt              ← ESP-IDF project root
 │   ├── sdkconfig.defaults          ← XIAO ESP32-C5 config (IDF v5.5.2+, PSRAM enabled)
 │   ├── partitions.csv              ← NVS + app partition (no SPIFFS)
 │   ├── main/
-│   │   ├── CMakeLists.txt          ← Component registration (I2S, TFLM, esp_timer)
-│   │   ├── Kconfig.projbuild       ← Menuconfig options (mic GPIOs, ring size, test switch)
-│   │   ├── main.cc                 ← Entry: TFLM verify + PSRAM ring init + MFCC + Inference
-│   │   ├── spectra_config.h        ← Frozen contract, GPIOs, ring, MFCC & TFLM constants
+│   │   ├── CMakeLists.txt          ← Component registration (I2S, TFLM, GPIO, NVS, timer)
+│   │   ├── Kconfig.projbuild       ← Menuconfig options (mic GPIOs, trigger params, demo mode)
+│   │   ├── main.cc                 ← Entry: TFLM verify + PSRAM ring + MFCC + Trigger
+│   │   ├── spectra_config.h        ← Frozen contract: GPIOs, buffer, MFCC, TFLM, Trigger
 │   │   ├── audio_capture.h/.cc     ← INMP441 I2S standard RX driver with DMA
 │   │   ├── audio_ring.h/.cc        ← PSRAM circular buffer with drop-oldest overrun policy
 │   │   ├── wav_injector.h/.cc      ← Deterministic synthetic test injector & CRC-32 engine
@@ -176,6 +182,8 @@ firmware/
 │   │   ├── tflm.h/.cc              ← TFLM engine: minimal resolver <5>, internal SRAM arena, invoke
 │   │   ├── logits_test.h/.cc       ← 5-clip boot self-test, SRAM budget audit, UART streaming
 │   │   ├── test_clips_5.h          ← 5 embedded golden clips (2 pos, 1 neg, 2 hard neg)
+│   │   ├── trigger.h/.cc           ← Trigger state machine (LISTEN, CANDIDATE, TRIGGERED, COOLDOWN)
+│   │   ├── pre_roll.h              ← Pre-roll audio window freeze buffer (16,000 int16 samples)
 │   │   ├── hann_table.h            ← 1024-point periodic Hann window table
 │   │   ├── twiddle_table.h         ← 512-point complex twiddle factors table
 │   │   ├── mel_table.h             ← 128x513 sparse Slaney Mel filterbank CSR table
@@ -198,18 +206,28 @@ firmware/
     ├── test_mfcc_parity.py         ← Python test suite asserting table math & C parity
     ├── gen_logits_ref.py           ← Desktop golden logits generator (50 clips + 5 embedded)
     ├── logits_goldens.json         ← Full 50-clip desktop golden reference dataset
-    └── test_logits_parity.py       ← Host parity and model invariant test suite
+    ├── test_logits_parity.py       ← Host parity and model invariant test suite
+    ├── test_trigger_host.c         ← C host test for Trigger state machine (Streams A, B, C, D)
+    └── feed_pstream.py             ← Python UART probability feeder for trigger demo
 ```
+
+## Binding Gate Status Vocabulary
+
+- **IMPLEMENTED**: Code exists, syntax valid, unexecuted on device.
+- **HOST-PASS**: Verified green on desktop/host environment (GCC/Python).
+- **MEASURED**: Quantitative numbers measured on physical hardware.
+- **PASS**: Measured on physical hardware AND within specified gate tolerances.
+*(A gate requiring hardware can never be marked PASS on host evidence alone).*
 
 ## Firmware Phases
 
 | Phase | Description | Key Dependency | Status |
 |---|---|---|---|
-| **0b** | **Target lock + Scaffold + Contract verification** | XIAO ESP32-C5, TFLM, LED proof | ✅ **Complete** |
-| **1** | **I2S audio capture + PSRAM ring buffer** | INMP441 microphone, 96 KB PSRAM ring | ✅ **Complete** |
-| **2** | **MFCC feature extraction (C/DSP)** | 1024-pt FFT, 128 Mel, 40 DCT, INT8 | ✅ **Complete** |
-| **3** | **TFLM inference + Memory discipline** | Minimal resolver <5>, arena in BSS, logits parity | ✅ **Complete** |
-| 4 | Energy gating + Wake logic | Threshold detection | ⬜ Planned |
+| **0b** | **Target lock + Scaffold + Contract verification** | XIAO ESP32-C5, TFLM, LED proof | **HOST-PASS** (Flash pending) |
+| **1** | **I2S audio capture + PSRAM ring buffer** | INMP441 microphone, 96 KB PSRAM ring | **HOST-PASS** (DMA on HW pending) |
+| **2** | **MFCC feature extraction (C/DSP)** | 1024-pt FFT, 128 Mel, 40 DCT, INT8 | **HOST-PASS** (C5 cycles pending) |
+| **3** | **TFLM inference + Memory discipline** | Minimal resolver <5>, arena in BSS, logits parity | **HOST-PASS** (Equivalence on HW pending) |
+| **4** | **Confidence trigger + LED demo** | State machine (N=3, CD=4), pre-roll freeze, NVS | **HOST-PASS** (Live demo on HW pending) |
 | 5 | Power optimization | Dynamic frequency scaling & sleep modes | ⬜ Planned |
 | 6 | OTA update support | Dual OTA partitions | ⬜ Planned |
 | 7 | Production hardening | Watchdog, brownout, fail-safe recovery | ⬜ Planned |
