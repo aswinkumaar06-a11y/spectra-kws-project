@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
 """
-analyze_fa.py — P6 False Activation (FA) Rate & Poisson Statistics Analyzer.
+analyze_fa.py — Algorithm FA-1 (Normative False-Accept Analyzer).
 
-Parses firmware serial UART logs, extracts TRIG lines, and computes:
-  1. FA per hour = total_triggers / total_hours (on verified keyword-free audio)
-  2. Exact Poisson 95% confidence upper bound (0 events in T hours => ~3/T)
-  3. Probability distribution of triggers (near-threshold 0.5-0.6 vs high confidence >= 0.9)
-  4. Hourly snapshots of heap, core temperature, and RSSI
-
-Usage:
-  python scripts/analyze_fa.py --log serial_soak.log [--hours 10]
-  python scripts/analyze_fa.py --demo (runs on simulated 10-hour soak log)
+Canonical implementation matching Spectra Phase 6 Specification:
+  1. Parses serial log files. Matches:
+       - Standard format: TRIG tick=<int> p=<float>
+       - Firmware format: TRIG tick=<int> t_ms=<int> p=[p0, p1, p2] pre_ts=<int>
+     Tracks unparseable / malformed lines without crashing.
+  2. Duration: T = (t_last - t_first) in hours from timestamps or tick deltas (500 ms/tick).
+  3. Events: k = count of TRIG events in [t_first, t_last].
+  4. Observed FA rate = k / T.
+  5. One-sided 95% Poisson upper bound on rate:
+       λ_upper = χ²⁻¹(0.95, df = 2(k+1)) / (2T)
+     Special case k = 0 => λ_upper = 5.99146 / (2T) ≈ 3.0 / T.
+  6. Verdict table:
+       k = 0 and T >= 10 h => "PASS (strong): λ < 0.30/h, beats <1.0/h bar with margin"
+       k = 0 and T >=  1 h => "PASS (weak): λ < 3.0/T/h"
+       k > 0 and λ_upper > 1.0/h => "FAIL vs <1.0/h claim bar"
+       else => "INCONCLUSIVE: extend soak duration"
+  7. Confidence-bucket histogram:
+       near-threshold 0.50–0.70 | mid 0.70–0.90 | high >= 0.90.
+  8. Output: T, k, k/T, λ_upper, verdict, bucket table, unparseable-line count.
 """
 
 import os
@@ -20,154 +30,269 @@ import argparse
 import numpy as np
 from scipy import stats
 
-TRIG_REGEX = re.compile(
-    r"TRIG\s+tick=(\d+)\s+t_ms=(\d+)\s+p=\[([0-9.]+),\s*([0-9.]+),\s*([0-9.]+)\]\s+pre_ts=(\d+)"
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+    if hasattr(sys.stderr, "reconfigure"):
+        try:
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def safe_print(s):
+    try:
+        print(s)
+    except UnicodeEncodeError:
+        print(s.encode("ascii", errors="replace").decode("ascii"))
+
+# Regex for standard or firmware TRIG line
+# Matches:
+#   TRIG tick=18000 p=0.61
+#   TRIG tick=14400 t_ms=7200000 p=[0.450, 0.520, 0.610] pre_ts=7199000
+#   [TRIGGER] TRIG tick=...
+TRIG_RE = re.compile(
+    r"(?:\[TRIGGER\]\s+)?TRIG\s+tick=(\d+)(?:\s+t_ms=(\d+))?\s+p=(?:\[([0-9.]+),\s*([0-9.]+),\s*([0-9.]+)\]|([0-9.]+))"
 )
-HEALTH_REGEX = re.compile(
-    r"HEALTH\s+uptime=(\d+)s\s+sram_min=(\d+)B.*?inf_avg_us=(\d+).*?freq=(\d+)MHz"
+
+# Regex for heartbeat / health lines with timestamp or uptime
+HEALTH_RE = re.compile(
+    r"(?:\[HEALTH\]\s+)?HEALTH\s+uptime=(\d+)s"
 )
+TICK_LINE_RE = re.compile(
+    r"(?:tick=(\d+)|uptime=(\d+)s|t_ms=(\d+))"
+)
+
+
+# Wall-clock timestamp regex: matches YYYY-MM-DD HH:MM:SS(.fff)? or HH:MM:SS(.fff)?
+WALL_CLOCK_RE = re.compile(
+    r"(?:^|\[)(\d{4}-\d{2}-\d{2}[ T])?(\d{1,2}:\d{2}:\d{2}(?:\.\d+)?)(?:\])?"
+)
+
+
+def parse_wall_clock_time(timestr, datestr=None):
+    """Parses wall-clock timestamp string into total seconds."""
+    parts = timestr.split(":")
+    h = float(parts[0])
+    m = float(parts[1])
+    s = float(parts[2])
+    day_offset = 0.0
+    if datestr:
+        # If full date is present, calculate date offset from day
+        date_clean = datestr.strip(" T")
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(f"{date_clean} {timestr}", "%Y-%m-%d %H:%M:%S.%f" if "." in timestr else "%Y-%m-%d %H:%M:%S")
+            return dt.timestamp()
+        except Exception:
+            pass
+    return h * 3600.0 + m * 60.0 + s
 
 
 def compute_poisson_upper_bound_95(events, hours):
     """
-    Computes exact 95% Poisson confidence upper bound for event rate (per hour).
-    Uses the exact Chi-square distribution relationship: lambda_upper = 0.5 * chi2.ppf(0.95, 2*(k+1)) / T.
-    For k=0 events, chi2.ppf(0.95, 2) = 5.99146 -> 5.99146 / (2*T) = 2.9957 / T ≈ 3/T.
+    Computes exact one-sided 95% Poisson confidence upper bound for event rate (per hour).
+    λ_upper = χ²⁻¹(0.95, df = 2(k+1)) / (2T)
+    For k=0, χ²⁻¹(0.95, 2) = 5.99146 => 5.99146 / (2T) ≈ 3.0 / T.
     """
     if hours <= 0:
         return float('nan')
     df = 2 * (events + 1)
     chi2_val = stats.chi2.ppf(0.95, df)
     upper_bound = 0.5 * chi2_val / hours
-    return upper_bound
+    return float(upper_bound)
 
 
 def analyze_log_content(log_text, declared_hours=None):
-    trig_matches = TRIG_REGEX.findall(log_text)
-    health_matches = HEALTH_REGEX.findall(log_text)
+    lines = log_text.splitlines()
+    unparseable_count = 0
 
-    # Determine elapsed hours from timestamps or declared_hours
-    max_t_ms = 0
-    p_values = []
+    first_tick_s = None
+    last_tick_s = None
+    first_wc_s = None
+    last_wc_s = None
 
-    for match in trig_matches:
-        tick, t_ms, p0, p1, p2, pre_ts = match
-        t_ms = int(t_ms)
-        if t_ms > max_t_ms:
-            max_t_ms = t_ms
-        p_values.append(float(p2))  # newest probability at firing
+    trig_events = []
 
-    max_uptime_s = 0
-    min_sram_bytes = None
-    for match in health_matches:
-        upt_s, sram_b, lat_us, freq = match
-        upt_s = int(upt_s)
-        sram_b = int(sram_b)
-        if upt_s > max_uptime_s:
-            max_uptime_s = upt_s
-        if min_sram_bytes is None or sram_b < min_sram_bytes:
-            min_sram_bytes = sram_b
+    for line_idx, raw_line in enumerate(lines):
+        line = raw_line.strip()
+        if not line:
+            continue
 
-    calculated_hours = max_uptime_s / 3600.0 if max_uptime_s > 0 else (max_t_ms / 3600000.0)
-    effective_hours = declared_hours if declared_hours is not None else max(calculated_hours, 1.0)
+        # Check for wall-clock timestamps
+        wc_match = WALL_CLOCK_RE.search(line)
+        if wc_match:
+            datestr, timestr = wc_match.groups()
+            try:
+                wc_s = parse_wall_clock_time(timestr, datestr)
+                if first_wc_s is None:
+                    first_wc_s = wc_s
+                last_wc_s = wc_s
+            except Exception:
+                pass
 
-    num_triggers = len(trig_matches)
-    fa_rate = num_triggers / effective_hours
-    poisson_95_upper = compute_poisson_upper_bound_95(num_triggers, effective_hours)
+        # Check for TRIG line
+        trig_match = TRIG_RE.search(line)
+        if trig_match:
+            tick_str, t_ms_str, p0, p1, p2, p_single = trig_match.groups()
+            tick = int(tick_str)
+            p_val = float(p_single) if p_single is not None else float(p2)
 
-    print("=" * 72)
-    print("  SPECTRA KWS -- P6 SOAK & FALSE ACTIVATION (FA) ANALYSIS REPORT")
-    print("=" * 72)
-    print(f"  Total Duration:           {effective_hours:.2f} hours")
-    print(f"  Verified Keyword-Free:    YES (Continuous background ambient audio)")
-    print(f"  Total False Triggers:     {num_triggers}")
-    print(f"  Measured FA Rate:         {fa_rate:.4f} FA / hour")
-    print(f"  Poisson 95% Upper Bound:  < {poisson_95_upper:.4f} FA / hour")
-    print("-" * 72)
+            if t_ms_str is not None:
+                t_s = int(t_ms_str) / 1000.0
+            else:
+                t_s = tick * 0.5  # 500 ms per tick
 
-    # Statistical claim validity
-    print("\n--- Statistical Significance Analysis (Poisson Upper Bound) ---")
-    if num_triggers == 0:
-        print(f"  0 events in {effective_hours:.1f} h -> 95% confidence that true lambda < {poisson_95_upper:.2f} / hour.")
-        if effective_hours >= 10.0:
-            print("  [CLAIM PASSED WITH MARGIN] 10 h overnight soak rigorously proves FA rate < 0.3 / h (< 1.0 / h target).")
-        elif effective_hours >= 3.0:
-            print("  [CLAIM MODERATE] Proves FA rate < 1.0 / h.")
-        else:
-            print("  [WEAK STATISTIC] 1 h bench test cannot honestly claim < 1.0 / h (bound is < 3.0 / h).")
+            if first_tick_s is None or t_s < first_tick_s:
+                first_tick_s = t_s
+            if last_tick_s is None or t_s > last_tick_s:
+                last_tick_s = t_s
+
+            trig_events.append({
+                "line": line_idx + 1,
+                "tick": tick,
+                "time_s": t_s,
+                "p": p_val
+            })
+            continue
+
+        # Check for other recognized timestamp/heartbeat lines
+        health_match = HEALTH_RE.search(line)
+        if health_match:
+            upt_s = float(health_match.group(1))
+            if first_tick_s is None or 0.0 < first_tick_s:
+                first_tick_s = 0.0
+            if last_tick_s is None or upt_s > last_tick_s:
+                last_tick_s = upt_s
+            continue
+
+        # Check for generic tick indicators
+        tick_match = TICK_LINE_RE.search(line)
+        if tick_match:
+            tk, up, tm = tick_match.groups()
+            if tk is not None:
+                t_s = int(tk) * 0.5
+            elif up is not None:
+                t_s = float(up)
+            else:
+                t_s = float(tm) / 1000.0
+
+            if first_tick_s is None or t_s < first_tick_s:
+                first_tick_s = t_s
+            if last_tick_s is None or t_s > last_tick_s:
+                last_tick_s = t_s
+            continue
+
+        # Check if line contains known metadata, banners, or separators
+        if (line.startswith("[SPECTRA]") or line.startswith("[POWER_MGR]") or 
+            line.startswith("[BOOT]") or line.startswith("[SOAK]") or line.startswith("=")):
+            continue
+
+        # Line not recognized by grammar
+        unparseable_count += 1
+
+    # Duration T calculation
+    duration_ticks_s = (last_tick_s - first_tick_s) if (first_tick_s is not None and last_tick_s is not None) else None
+    duration_wc_s = (last_wc_s - first_wc_s) if (first_wc_s is not None and last_wc_s is not None) else None
+
+    if declared_hours is not None:
+        T = float(declared_hours)
+    elif duration_wc_s is not None and duration_wc_s > 0:
+        T = duration_wc_s / 3600.0
+    elif duration_ticks_s is not None and duration_ticks_s > 0:
+        T = duration_ticks_s / 3600.0
     else:
-        print(f"  {num_triggers} trigger events observed. Poisson 95% upper bound: {poisson_95_upper:.3f} / hour.")
+        raise ValueError("cannot bound duration (no valid timestamps or duration <= 0)")
 
-    # Probability distribution
-    if p_values:
-        p_arr = np.array(p_values)
-        near_thresh = np.sum((p_arr >= 0.5) & (p_arr < 0.7))
-        mid_thresh = np.sum((p_arr >= 0.7) & (p_arr < 0.9))
-        high_thresh = np.sum(p_arr >= 0.9)
+    if T <= 0:
+        raise ValueError("cannot bound duration (T <= 0)")
 
-        print("\n--- Trigger Confidence Distribution ---")
-        print(f"  Near-Threshold [0.50 - 0.70): {near_thresh} ({near_thresh/len(p_arr)*100:.1f}%) [tunable]")
-        print(f"  Mid-Range      [0.70 - 0.90): {mid_thresh} ({mid_thresh/len(p_arr)*100:.1f}%)")
-        print(f"  High Confidence      >= 0.90: {high_thresh} ({high_thresh/len(p_arr)*100:.1f}%)")
+    k = len(trig_events)
+    fa_rate = k / T
+    lambda_upper = compute_poisson_upper_bound_95(k, T)
 
-    if min_sram_bytes is not None:
-        print("\n--- System Health & Memory Telemetry ---")
-        print(f"  Minimum Internal SRAM Free: {min_sram_bytes} bytes (Target: > 45,000 B)")
-        print(f"  Memory Leak Detected:       {'NO' if min_sram_bytes > 45000 else 'YES'}")
-
-    print("\n--- Acceptance Bar Verdict ---")
-    if num_triggers == 0 and effective_hours >= 10.0:
-        verdict = "PASS"
-        verdict_detail = f"0 FAs observed over {effective_hours:.1f} h (Poisson 95% bound < {poisson_95_upper:.3f} / h satisfies < 1.0/h bar with margin)"
-    elif num_triggers == 0:
-        verdict = "INCONCLUSIVE (WEAK)"
-        verdict_detail = f"0 FAs observed over {effective_hours:.1f} h (Duration too short: Poisson bound < {poisson_95_upper:.2f}/h cannot claim < 1.0/h)"
+    # Verdict table per Step 6 of Algorithm FA-1
+    if k == 0 and T >= 10.0:
+        verdict = "PASS (strong): λ < 0.30/h, beats <1.0/h bar with margin"
+        status_code = "PASS"
+    elif k == 0 and T >= 1.0:
+        verdict = f"PASS (weak): λ < {3.0 / T:.2f}/h"
+        status_code = "PASS_WEAK"
+    elif k > 0 and lambda_upper > 1.0:
+        verdict = f"FAIL vs <1.0/h claim bar (measured {fa_rate:.2f}/h, λ_upper = {lambda_upper:.2f}/h)"
+        status_code = "FAIL"
     else:
-        verdict = "FAIL"
-        verdict_detail = f"{num_triggers} false triggers observed on keyword-free audio (Measured rate: {fa_rate:.2f}/h, fails 0-FA soak bar)"
+        verdict = f"INCONCLUSIVE: extend soak duration (measured {fa_rate:.2f}/h, λ_upper = {lambda_upper:.2f}/h)"
+        status_code = "INCONCLUSIVE"
 
-    print(f"  VERDICT: {verdict}")
-    print(f"  Detail:  {verdict_detail}")
-    print("=" * 72)
+    # Confidence-bucket histogram per Step 7
+    p_values = [e["p"] for e in trig_events]
+    near_count = sum(1 for p in p_values if 0.50 <= p < 0.70)
+    mid_count = sum(1 for p in p_values if 0.70 <= p < 0.90)
+    high_count = sum(1 for p in p_values if p >= 0.90)
+
+    safe_print("=" * 75)
+    safe_print("  SPECTRA KWS -- ALGORITHM FA-1 FALSE-ACCEPT ANALYZER")
+    safe_print("=" * 75)
+    safe_print(f"  Duration (T):             {T:.2f} hours ({T*3600:.0f} seconds)")
+    safe_print(f"  False-Accept Count (k):   {k} events")
+    safe_print(f"  Observed FA Rate (k/T):   {fa_rate:.4f} FA / hour")
+    safe_print(f"  Poisson 95% Upper (λ):    < {lambda_upper:.4f} / hour")
+    safe_print(f"  Unparseable Line Count:   {unparseable_count}")
+    safe_print("-" * 75)
+    safe_print(f"  VERDICT:                  {verdict}")
+    safe_print("-" * 75)
+    safe_print("  Confidence-Bucket Histogram of TRIG Events:")
+    safe_print(f"    - Near-Threshold [0.50, 0.70):  {near_count:3d}")
+    safe_print(f"    - Mid-Range      [0.70, 0.90):  {mid_count:3d}")
+    safe_print(f"    - High-Conf      [0.90, 1.00]:  {high_count:3d}")
+    safe_print("=" * 75)
 
     return {
-        "hours": effective_hours,
-        "triggers": num_triggers,
+        "duration_hours": T,
+        "duration_ticks_s": duration_ticks_s,
+        "duration_wallclock_s": duration_wc_s,
+        "k_events": k,
+        "triggers": k,  # compat
         "fa_rate": fa_rate,
-        "poisson_95_upper": poisson_95_upper,
-        "p_values": p_values
+        "lambda_upper": lambda_upper,
+        "poisson_95_upper": lambda_upper,  # compat
+        "hours": T,  # compat
+        "p_values": p_values,  # compat
+        "verdict": verdict,
+        "status_code": status_code,
+        "unparseable_count": unparseable_count,
+        "buckets": {
+            "near": near_count,
+            "mid": mid_count,
+            "high": high_count
+        }
     }
 
 
-def generate_demo_soak_log(filename="serial_soak_demo.log", hours=10):
-    """Generates a synthetic 10-hour clean soak log with zero false triggers."""
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write("[SPECTRA] Spectra KWS -- 10-Hour Soak Test Started\n")
-        f.write("[POWER_MGR] DFS configured: min=80MHz, max=240MHz, light_sleep=1\n")
-        # Write hourly health telemetry lines
-        for h in range(1, hours + 1):
-            upt = h * 3600
-            f.write(f"[HEALTH] HEALTH uptime={upt}s sram_min=172000B sram_cur=172000B psram_min=8000000B inf_count={h*7200} inf_avg_us=15820 trigs=0 overruns=0 freq=80MHz\n")
-    print(f"Created demo soak log: {filename} ({hours} hours, 0 FAs)")
-    return filename
+
+def main():
+    parser = argparse.ArgumentParser(description="Algorithm FA-1 False-Accept Analyzer")
+    parser.add_argument("--log", required=True, help="Path to serial log file")
+    parser.add_argument("--hours", type=float, help="Explicit duration in hours (overrides timestamp math)")
+    args = parser.parse_args()
+
+    if not os.path.exists(args.log):
+        print(f"Error: Log file not found: {args.log}", file=sys.stderr)
+        sys.exit(1)
+
+    with open(args.log, "r", encoding="utf-8", errors="replace") as f:
+        content = f.read()
+
+    try:
+        analyze_log_content(content, declared_hours=args.hours)
+    except Exception as e:
+        print(f"Error analyzing log: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Analyze P6 soak test logs for False Activation (FA) rate")
-    parser.add_argument("--log", help="Path to UART serial log file")
-    parser.add_argument("--hours", type=float, help="Explicit test duration in hours")
-    parser.add_argument("--demo", action="store_true", help="Run on simulated 10-hour zero-FA soak log")
-    args = parser.parse_args()
-
-    if args.demo:
-        demo_file = generate_demo_soak_log()
-        with open(demo_file, "r", encoding="utf-8") as f:
-            analyze_log_content(f.read(), declared_hours=10.0)
-    elif args.log:
-        if not os.path.exists(args.log):
-            print(f"Error: Log file not found: {args.log}")
-            sys.exit(1)
-        with open(args.log, "r", encoding="utf-8", errors="ignore") as f:
-            analyze_log_content(f.read(), declared_hours=args.hours)
-    else:
-        parser.print_help()
+    main()

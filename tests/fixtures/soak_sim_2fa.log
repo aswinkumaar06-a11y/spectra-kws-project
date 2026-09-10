@@ -5,13 +5,12 @@
 [SPECTRA] ========================================
 [POWER_MGR] DFS configured: min=80MHz, max=240MHz, light_sleep=1
 [HEALTH] HEALTH uptime=3600s sram_min=172000B sram_cur=172000B psram_min=8000000B inf_count=7200 inf_avg_us=15820 trigs=0 overruns=0 freq=80MHz
-[HEALTH] HEALTH uptime=7200s sram_min=172000B sram_cur=172000B psram_min=8000000B inf_count=14400 inf_avg_us=15810 trigs=0 overruns=0 freq=80MHz
-[TRIGGER] TRIG tick=14400 t_ms=7200000 p=[0.450, 0.520, 0.610] pre_ts=7199000
+[TRIGGER] TRIG tick=18000 t_ms=9000000 p=0.61
 [HEALTH] HEALTH uptime=10800s sram_min=172000B sram_cur=172000B psram_min=8000000B inf_count=21600 inf_avg_us=15825 trigs=1 overruns=0 freq=80MHz
 [HEALTH] HEALTH uptime=14400s sram_min=171950B sram_cur=172000B psram_min=8000000B inf_count=28800 inf_avg_us=15820 trigs=1 overruns=0 freq=80MHz
 [HEALTH] HEALTH uptime=18000s sram_min=171950B sram_cur=172000B psram_min=8000000B inf_count=36000 inf_avg_us=15815 trigs=1 overruns=0 freq=80MHz
 [HEALTH] HEALTH uptime=21600s sram_min=171950B sram_cur=172000B psram_min=8000000B inf_count=43200 inf_avg_us=15820 trigs=1 overruns=0 freq=80MHz
-[TRIGGER] TRIG tick=43200 t_ms=21600000 p=[0.720, 0.810, 0.880] pre_ts=21599000
+[TRIGGER] TRIG tick=54000 t_ms=27000000 p=0.93
 [HEALTH] HEALTH uptime=25200s sram_min=171950B sram_cur=172000B psram_min=8000000B inf_count=50400 inf_avg_us=15830 trigs=2 overruns=0 freq=80MHz
 [HEALTH] HEALTH uptime=28800s sram_min=171950B sram_cur=172000B psram_min=8000000B inf_count=57600 inf_avg_us=15820 trigs=2 overruns=0 freq=80MHz
 [HEALTH] HEALTH uptime=32400s sram_min=171950B sram_cur=172000B psram_min=8000000B inf_count=64800 inf_avg_us=15822 trigs=2 overruns=0 freq=80MHz
