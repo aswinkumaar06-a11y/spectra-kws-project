@@ -110,19 +110,23 @@ void logits_test_print_memory_budget(void) {
     size_t psram_free = psram_total - psram_used;
 #endif
 
-    // Static footprint accounting
-    size_t arena_sz = info.arena_capacity;
+    // Static footprint accounting (U1 remediated: 68 KB s_padded_audio removed)
+    size_t arena_sz = info.arena_capacity;                     // 81,920 B (80.0 KB)
     size_t arena_used = info.arena_used;
-    size_t ring_sz = SPECTRA_RING_CAPACITY * sizeof(int16_t);  // 96,000 bytes
-    size_t model_sz = info.model_bytes;                        // 39,552 bytes
-    size_t dsp_tables_sz = (1024 * 4) + (512 * 8) + (1009 * 4 + 128 * 4) + (40 * 128 * 4); // ~33 KB
+    size_t mfcc_scratch = 28676;                               // FFT re/im (8KB), power (2KB), log_mel (16KB), bit_rev (2KB)
+    size_t preroll_sz = SPECTRA_PRE_ROLL_SAMPLES * sizeof(int16_t); // 32,000 B (31.25 KB)
+    size_t dma_sz = SPECTRA_CAPTURE_BLOCK_SAMPLES * sizeof(int16_t); // 8,000 B (7.8 KB)
+    size_t ring_sz = SPECTRA_RING_CAPACITY * sizeof(int16_t);  // 96,000 B (External PSRAM)
+    size_t model_sz = info.model_bytes;                        // 39,552 B (Flash RO)
+    size_t dsp_tables_sz = (1024 * 4) + (512 * 8) + (1009 * 4 + 128 * 4) + (40 * 128 * 4); // ~35 KB (Flash RO)
 
     ESP_LOGI(TAG, "| Component                     | Placement     | Size (Bytes) | Size (KB)  |");
     ESP_LOGI(TAG, "|-------------------------------|---------------|--------------|------------|");
     ESP_LOGI(TAG, "| TFLM Tensor Arena (BSS)       | Internal SRAM | %12u | %8.1f KB |", (unsigned)arena_sz, (float)arena_sz / 1024.0f);
     ESP_LOGI(TAG, "|   └─ Exact Arena Used         | Internal SRAM | %12u | %8.1f KB |", (unsigned)arena_used, (float)arena_used / 1024.0f);
-    ESP_LOGI(TAG, "| MFCC Padded Audio + FFT (BSS) | Internal SRAM | %12u | %8.1f KB |", 17024 * 4 + 1024 * 8, (float)(17024 * 4 + 1024 * 8) / 1024.0f);
-    ESP_LOGI(TAG, "| DMA Block Buffer              | Internal SRAM | %12u | %8.1f KB |", 4000 * 2, 8.0f);
+    ESP_LOGI(TAG, "| MFCC FFT + Mel Scratch (BSS)  | Internal SRAM | %12u | %8.1f KB |", (unsigned)mfcc_scratch, (float)mfcc_scratch / 1024.0f);
+    ESP_LOGI(TAG, "| Pre-Roll Audio Buffer (BSS)   | Internal SRAM | %12u | %8.1f KB |", (unsigned)preroll_sz, (float)preroll_sz / 1024.0f);
+    ESP_LOGI(TAG, "| DMA Block Buffer              | Internal SRAM | %12u | %8.1f KB |", (unsigned)dma_sz, (float)dma_sz / 1024.0f);
     ESP_LOGI(TAG, "| Total Internal SRAM Allocated | Internal SRAM | %12u | %8.1f KB |", (unsigned)internal_used, (float)internal_used / 1024.0f);
     ESP_LOGI(TAG, "| Internal Free Headroom        | Internal SRAM | %12u | %8.1f KB |", (unsigned)internal_free, (float)internal_free / 1024.0f);
     ESP_LOGI(TAG, "|-------------------------------|---------------|--------------|------------|");
@@ -130,7 +134,7 @@ void logits_test_print_memory_budget(void) {
     ESP_LOGI(TAG, "| PSRAM Free Remaining          | External PSRAM| %12u | %8.1f MB |", (unsigned)psram_free, (float)psram_free / (1024.0f * 1024.0f));
     ESP_LOGI(TAG, "|-------------------------------|---------------|--------------|------------|");
     ESP_LOGI(TAG, "| TFLite Model Data             | Flash (RO)    | %12u | %8.1f KB |", (unsigned)model_sz, (float)model_sz / 1024.0f);
-    ESP_LOGI(TAG, "| DSP Precomputed Tables        | Flash (RO)    | %12u | %8.1f KB |", (unsigned)dsp_tables_sz, (float)dsp_tables_sz / 1024.0f);
+    ESP_LOGI(TAG, "| DSP Precomputed Tables (CSR)  | Flash (RO)    | %12u | %8.1f KB |", (unsigned)dsp_tables_sz, (float)dsp_tables_sz / 1024.0f);
     ESP_LOGI(TAG, "==================================================");
     ESP_LOGI(TAG, "Discipline Check: Internal SRAM Total %u KB <= 256 KB Target -> %s",
              (unsigned)(internal_used / 1024),

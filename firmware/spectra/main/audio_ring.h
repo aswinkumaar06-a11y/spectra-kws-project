@@ -93,6 +93,22 @@ void audio_ring_get_stats(audio_ring_stats_t* stats);
  */
 void audio_ring_reset(void);
 
+/**
+ * Read samples by absolute monotonic sample index.
+ * Handles circular indexing, stale sample skips, and underflow gap accounting.
+ *
+ * @param start_abs_idx Monotonic sample index (0 = first sample written since init/reset)
+ * @param dst Destination buffer
+ * @param n_samples Number of samples to read
+ * @return Number of samples actually read into dst
+ */
+size_t audio_ring_read_abs(uint64_t start_abs_idx, int16_t* dst, size_t n_samples);
+
+/**
+ * Get cumulative monotonic sample count written since init or reset.
+ */
+uint64_t audio_ring_get_total_written(void);
+
 #ifdef __cplusplus
 }
 #endif

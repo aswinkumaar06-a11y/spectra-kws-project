@@ -150,16 +150,43 @@ venv\Scripts\python.exe -m unittest firmware/tests/test_mfcc_parity.py
 venv\Scripts\python.exe -m unittest firmware/tests/test_logits_parity.py
 ```
 
-### 8. Phase 4 Trigger State Machine & LED Demo Host Test
+### 10. Phase 5 Endpoint VAD & U2 Boundary Verification
 ```bash
-gcc -Wall -Wextra -O2 -DSPECTRA_HOST_TEST -I firmware/spectra/main firmware/tests/test_trigger_host.c firmware/spectra/main/trigger.cc -o test_trigger_host.exe
-./test_trigger_host.exe
+gcc -O2 -o test_vad_host.exe firmware/tests/test_vad_host.c firmware/spectra/main/vad.cc firmware/spectra/main/mfcc.cc -I firmware/spectra/main -lm
+./test_vad_host.exe
 ```
 
-### 9. Phase 4 Serial Probability Stream Feeder (Hardware Demo)
+### 11. Phase 5 Streaming Protocol Loopback Test Suite
 ```bash
-python firmware/tests/feed_pstream.py --port COM3 --stream D
+venv\Scripts\python.exe -m unittest firmware/tests/test_stream_proto.py
 ```
+
+### 12. Phase 5 ASR TCP Server (Laptop)
+```bash
+venv\Scripts\python.exe server/asr_server.py --port 8765 --model tiny --compute_type int8
+```
+
+### 13. Phase 5 PCM Test Feeder
+```bash
+venv\Scripts\python.exe firmware/tests/feed_pcm.py --port 8765
+```
+
+## Reconciled Memory Budget Audit (U1 Remediated)
+
+| Component | Placement | Size (Bytes) | Size (KB) | Status |
+|---|---|---|---|---|
+| **TFLM Tensor Arena** | Internal SRAM (.bss) | 81,920 | 80.0 KB | Compliant |
+| **MFCC FFT & Mel Scratch** | Internal SRAM (.bss) | 28,676 | 28.0 KB | Cut from 96.7 KB (U1 fix) |
+| **Pre-Roll Audio Buffer** | Internal SRAM (.bss) | 32,000 | 31.25 KB | 1.0s @ 16 kHz |
+| **DMA Block Buffer** | Internal SRAM | 8,000 | 7.8 KB | 0.25s DMA chunk |
+| **FreeRTOS Task Stacks** | Internal SRAM | 16,384 | 16.0 KB | 4 KB x 4 tasks |
+| **App Static Internal SRAM** | Internal SRAM | **166,980** | **163.1 KB** | < 170 KB target |
+| **IDF Base Runtime (est)** | Internal SRAM | ~45,000 | ~44.0 KB | Heap/stack/ROM |
+| **Total Internal SRAM** | Internal SRAM | **~211,980** | **~207.0 KB** | **< 256.0 KB Target** |
+| **Wi-Fi Headroom Available** | Internal SRAM | **~50,164** | **~49.0 KB** | **COMPLIANT** |
+| Audio Ring Buffer (3.0s) | External PSRAM | 96,000 | 93.75 KB | 8 MB PSRAM |
+| TFLite Model Weights | Flash (RO) | 39,552 | 38.6 KB | 8 MB Flash |
+| DSP Tables (CSR Mel) | Flash (RO) | 35,468 | 34.6 KB | 8 MB Flash |
 
 ## Project Structure
 
@@ -171,19 +198,23 @@ firmware/
 │   ├── sdkconfig.defaults          ← XIAO ESP32-C5 config (IDF v5.5.2+, PSRAM enabled)
 │   ├── partitions.csv              ← NVS + app partition (no SPIFFS)
 │   ├── main/
-│   │   ├── CMakeLists.txt          ← Component registration (I2S, TFLM, GPIO, NVS, timer)
-│   │   ├── Kconfig.projbuild       ← Menuconfig options (mic GPIOs, trigger params, demo mode)
+│   │   ├── CMakeLists.txt          ← Component registration (I2S, TFLM, GPIO, NVS, WiFi, LwIP)
+│   │   ├── Kconfig.projbuild       ← Menuconfig options (mic GPIOs, trigger, Wi-Fi, ASR server)
 │   │   ├── main.cc                 ← Entry: TFLM verify + PSRAM ring + MFCC + Trigger
-│   │   ├── spectra_config.h        ← Frozen contract: GPIOs, buffer, MFCC, TFLM, Trigger
+│   │   ├── spectra_config.h        ← Frozen contract: GPIOs, buffer, MFCC, TFLM, VAD, Stream
 │   │   ├── audio_capture.h/.cc     ← INMP441 I2S standard RX driver with DMA
 │   │   ├── audio_ring.h/.cc        ← PSRAM circular buffer with drop-oldest overrun policy
 │   │   ├── wav_injector.h/.cc      ← Deterministic synthetic test injector & CRC-32 engine
-│   │   ├── mfcc.h/.cc              ← C MFCC feature extraction engine (FFT, Mel, DCT)
+│   │   ├── mfcc.h/.cc              ← C MFCC engine (on-the-fly windowing, 28 KB scratch)
 │   │   ├── tflm.h/.cc              ← TFLM engine: minimal resolver <5>, internal SRAM arena, invoke
 │   │   ├── logits_test.h/.cc       ← 5-clip boot self-test, SRAM budget audit, UART streaming
 │   │   ├── test_clips_5.h          ← 5 embedded golden clips (2 pos, 1 neg, 2 hard neg)
 │   │   ├── trigger.h/.cc           ← Trigger state machine (LISTEN, CANDIDATE, TRIGGERED, COOLDOWN)
 │   │   ├── pre_roll.h              ← Pre-roll audio window freeze buffer (16,000 int16 samples)
+│   │   ├── vad.h/.cc               ← Endpoint VAD (100 ms RMS frames, TH=0.02, deterministic state machine)
+│   │   ├── netwrap.h/.cc           ← Cross-platform socket abstraction (ESP-IDF LwIP / Host Winsock)
+│   │   ├── streamer.h/.cc          ← Streamer coordinator (pre-roll + live chunks + VAD endpoint)
+│   │   ├── stream_proto.h          ← Binary streaming framing protocol (SP magic, CRC-16)
 │   │   ├── hann_table.h            ← 1024-point periodic Hann window table
 │   │   ├── twiddle_table.h         ← 512-point complex twiddle factors table
 │   │   ├── mel_table.h             ← 128x513 sparse Slaney Mel filterbank CSR table
@@ -199,7 +230,7 @@ firmware/
     ├── test_model_contract.py      ← Python contract validation
     ├── test_model_array.c          ← C model array validation
     ├── test_wav_injection.py       ← Python ring buffer & golden CRC generator
-    ├── test_audio_ring.c           ← C circular ring unit test (26 test assertions)
+    ├── test_audio_ring.c           ← C circular ring unit test (31 test assertions)
     ├── gen_mfcc_goldens.py         ← Golden table & 50-clip binary bundle generator
     ├── mfcc_goldens.bin            ← 50-clip test bundle with Python ground truth
     ├── test_mfcc_host.c            ← C host regression test (50 clips, gates, edge cases)
@@ -208,7 +239,11 @@ firmware/
     ├── logits_goldens.json         ← Full 50-clip desktop golden reference dataset
     ├── test_logits_parity.py       ← Host parity and model invariant test suite
     ├── test_trigger_host.c         ← C host test for Trigger state machine (Streams A, B, C, D)
-    └── feed_pstream.py             ← Python UART probability feeder for trigger demo
+    ├── feed_pstream.py             ← Python UART probability feeder for trigger demo
+    ├── test_vad_host.c             ← C host test for Endpoint VAD (V1, V2, V3) & U2 boundary
+    ├── test_streamer_c_host.c      ← C host test for streamer connecting to ASR server
+    ├── test_stream_proto.py        ← Python streaming protocol & TCP loopback test suite
+    └── feed_pcm.py                 ← Python test feeder streaming audio to ASR server
 ```
 
 ## Binding Gate Status Vocabulary
@@ -228,7 +263,7 @@ firmware/
 | **2** | **MFCC feature extraction (C/DSP)** | 1024-pt FFT, 128 Mel, 40 DCT, INT8 | **HOST-PASS** (C5 cycles pending) |
 | **3** | **TFLM inference + Memory discipline** | Minimal resolver <5>, arena in BSS, logits parity | **HOST-PASS** (Equivalence on HW pending) |
 | **4** | **Confidence trigger + LED demo** | State machine (N=3, CD=4), pre-roll freeze, NVS | **HOST-PASS** (Live demo on HW pending) |
-| 5 | Power optimization | Dynamic frequency scaling & sleep modes | ⬜ Planned |
-| 6 | OTA update support | Dual OTA partitions | ⬜ Planned |
+| **5** | **Streaming + ASR (faster-whisper)** | Endpoint VAD, Binary framing, 10s cap, laptop TCP server | **HOST-PASS** (Device Wi-Fi pending) |
+| 6 | Power optimization | Dynamic frequency scaling & sleep modes | ⬜ Planned |
 | 7 | Production hardening | Watchdog, brownout, fail-safe recovery | ⬜ Planned |
 

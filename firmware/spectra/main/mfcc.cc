@@ -45,7 +45,7 @@ static uint16_t s_bit_rev[N_FFT];
 static bool s_initialized = false;
 
 // Working buffers (kept static to avoid stack overflow)
-static float s_padded_audio[TARGET_SAMPLES + N_FFT];  // 17,024 samples
+// NOTE: s_padded_audio (68 KB) removed in U1 fix; samples windowed on-the-fly directly from window_16k
 static float s_fft_re[N_FFT];
 static float s_fft_im[N_FFT];
 static float s_power[SPECTRA_FFT_BINS];
@@ -170,33 +170,31 @@ bool mfcc_process_window(const int16_t* window_16k,
         return false;
     }
 
-    // ── Stage 2: Peak Normalization & Centered Zero-Padding ──────────────
-    // Pad 512 zeros at beginning and end (matching librosa melspectrogram constant pad)
-    memset(&s_padded_audio[0], 0, 512 * sizeof(float));
-    memset(&s_padded_audio[512 + TARGET_SAMPLES], 0, 512 * sizeof(float));
-
+    // ── Stage 2: Peak Normalization Factor ──────────────────────────────
     int16_t max_abs_int = 0;
     for (size_t i = 0; i < TARGET_SAMPLES; i++) {
         int16_t val = window_16k[i];
         int16_t a = (val < 0) ? (int16_t)(-val) : val;
         if (a > max_abs_int) max_abs_int = a;
     }
-
     float norm_factor = (max_abs_int > 0) ? (1.0f / (float)max_abs_int) : 1.0f;
-    for (size_t i = 0; i < TARGET_SAMPLES; i++) {
-        s_padded_audio[512 + i] = (float)window_16k[i] * norm_factor;
-    }
 
     // ── Stage 3-5: 32 Frames x (Window + FFT + Power + Sparse Mel) ──────
+    // Centered zero-padding (512 samples) is applied on-the-fly without allocating
+    // a 68 KB padded buffer, slashing MFCC scratch memory from ~96.7 KB to ~32.8 KB.
     float global_max_log = -1e30f;
 
     for (int t = 0; t < SPECTRA_N_FRAMES; t++) {
-        const float* frame = &s_padded_audio[t * HOP_LENGTH];
+        int frame_offset = t * HOP_LENGTH - 512;
 
-        // Apply periodic Hann window and bit-reversal reordering
+        // Apply periodic Hann window and bit-reversal reordering directly from window_16k
         for (int i = 0; i < N_FFT; i++) {
             uint16_t rev_idx = s_bit_rev[i];
-            s_fft_re[i] = frame[rev_idx] * kHannWindowFloat[rev_idx];
+            int sample_idx = frame_offset + rev_idx;
+            float sample = (sample_idx >= 0 && sample_idx < (int)TARGET_SAMPLES)
+                           ? ((float)window_16k[sample_idx] * norm_factor)
+                           : 0.0f;
+            s_fft_re[i] = sample * kHannWindowFloat[rev_idx];
             s_fft_im[i] = 0.0f;
         }
 

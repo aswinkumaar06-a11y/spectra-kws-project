@@ -128,3 +128,47 @@ menu "Spectra KWS Trigger & Demo Configuration"
 
 endmenu
 
+menu "Spectra Phase 5 Streaming & ASR Configuration"
+
+    config SPECTRA_WIFI_SSID
+        string "Wi-Fi SSID"
+        default "myssid"
+        help
+            SSID of the 2.4 GHz / 5 GHz Wi-Fi network for XIAO ESP32-C5 to connect to.
+
+    config SPECTRA_WIFI_PASSWORD
+        string "Wi-Fi Password"
+        default "mypassword"
+        help
+            WPA2/WPA3 password for Wi-Fi network.
+
+    config SPECTRA_ASR_SERVER_IP
+        string "ASR Server Host / IP"
+        default "192.168.1.100"
+        help
+            IP address or hostname of the laptop running server/asr_server.py.
+
+    config SPECTRA_ASR_SERVER_PORT
+        int "ASR Server TCP Port"
+        default 8765
+        range 1024 65535
+        help
+            TCP port for the ASR server. Default is 8765.
+
+    config SPECTRA_VAD_THRESHOLD_MILLI
+        int "Endpoint VAD RMS Energy Threshold in thousandths (e.g. 20 = 0.020)"
+        default 20
+        range 1 500
+        help
+            RMS energy threshold normalized to [0.0, 1.0] in thousandths.
+            Default 20 corresponds to 0.020. Tunable on hardware from mic telemetry.
+
+    config SPECTRA_BOOT_BUTTON_GPIO
+        int "BOOT Button Abort GPIO"
+        default 28
+        help
+            GPIO pin for the onboard BOOT button on XIAO ESP32-C5 (active LOW).
+            Pressing this button aborts active streaming.
+
+endmenu
+

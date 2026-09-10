@@ -186,11 +186,42 @@ int main(void) {
     peek_ok = audio_ring_peek_window(window, SPECTRA_WINDOW_SAMPLES);
     CHECK(peek_ok, "Peek succeeds after overrun recovery");
 
-    // ── Test 7: Reset and Deinit ────────────────────────────────────────
-    printf("\n[7] Testing Reset and Deinitialization...\n");
+    // ── Test 7: Absolute Index Read & Stale Accounting ─────────────────
+    printf("\n[7] Testing Absolute Monotonic Read (audio_ring_read_abs)...\n");
+    audio_ring_reset();
+    int16_t ramp_buf[1000];
+    for (int i = 0; i < 1000; i++) ramp_buf[i] = (int16_t)i;
+
+    // Write 5 blocks of 1000 samples (5000 total)
+    for (int b = 0; b < 5; b++) {
+        for (int i = 0; i < 1000; i++) ramp_buf[i] = (int16_t)(b * 1000 + i);
+        audio_ring_write(ramp_buf, 1000);
+    }
+    CHECK(audio_ring_get_total_written() == 5000, "audio_ring_get_total_written() == 5000");
+
+    // Read absolute range [1500, 2500)
+    int16_t read_out[1000];
+    size_t n_read = audio_ring_read_abs(1500, read_out, 1000);
+    CHECK(n_read == 1000, "Read 1000 samples from absolute offset 1500");
+    bool ramp_match = true;
+    for (int i = 0; i < 1000; i++) {
+        if (read_out[i] != (int16_t)(1500 + i)) {
+            ramp_match = false;
+            break;
+        }
+    }
+    CHECK(ramp_match, "Read samples exactly match monotonic ramp values");
+
+    // Underflow test: request beyond total written
+    size_t n_underflow = audio_ring_read_abs(6000, read_out, 500);
+    CHECK(n_underflow == 0, "Reading beyond total written returns 0 (underflow)");
+
+    // ── Test 8: Reset and Deinit ────────────────────────────────────────
+    printf("\n[8] Testing Reset and Deinitialization...\n");
     audio_ring_reset();
     CHECK(audio_ring_available() == 0, "Reset cleared available samples");
     CHECK(audio_ring_overruns() == 0, "Reset cleared overrun count");
+    CHECK(audio_ring_get_total_written() == 0, "Reset cleared total written samples");
 
     audio_ring_deinit();
     CHECK(audio_ring_write(block, 4000) == 0, "Write safely rejected after deinit");

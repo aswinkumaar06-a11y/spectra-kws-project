@@ -9,6 +9,9 @@ idf_component_register(
         "tflm.cc"
         "logits_test.cc"
         "trigger.cc"
+        "vad.cc"
+        "netwrap.cc"
+        "streamer.cc"
     INCLUDE_DIRS
         "."
     REQUIRES
@@ -17,4 +20,7 @@ idf_component_register(
         esp_driver_gpio
         esp_timer
         nvs_flash
+        esp_wifi
+        esp_netif
+        lwip
 )

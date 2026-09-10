@@ -83,7 +83,18 @@
 // ─── Model Metadata ────────────────────────────────────────────────────────
 #define SPECTRA_MODEL_SIZE_BYTES   39552
 
-// ─── Board: XIAO ESP32-C5 ──────────────────────────────────────────────────
-#define SPECTRA_LED_GPIO           27       // Active HIGH (fallback 15 configurable via Kconfig)
+// ─── Phase 5: Streaming & Endpoint VAD Constants ──────────────────────────
+#define SPECTRA_VAD_FRAME_MS           100      // 100 ms RMS frames
+#define SPECTRA_VAD_FRAME_SAMPLES      1600     // 100 ms @ 16 kHz = 1600 int16 samples
+#define SPECTRA_VAD_THRESHOLD          0.02f    // Default RMS energy threshold
+#define SPECTRA_VAD_SPEECH_TRIGGER     2        // 2 consecutive frames > TH to confirm speech
+#define SPECTRA_VAD_SILENCE_TRIGGER    3        // 3 consecutive frames < TH to trigger END
+#define SPECTRA_VAD_MIN_SPEECH_FRAMES  3        // Min 3 speech frames required for valid utterance
+#define SPECTRA_STREAM_SERVER_PORT     8765     // Default TCP port for ASR server
+#define SPECTRA_STREAM_MAX_DURATION_S  10       // 10 second hard cap on utterance streaming
+#define SPECTRA_STREAM_MAX_FRAMES      100      // 100 frames * 100 ms = 10.0 s
+// ─── GPIO Definitions (XIAO ESP32-C5) ─────────────────────────────────────
+#define SPECTRA_LED_GPIO               27       // Active HIGH user LED (fallback 15 configurable via Kconfig)
+#define SPECTRA_BOOT_BUTTON_GPIO       28       // XIAO ESP32-C5 BOOT button (abort trigger)
 
 #endif  // SPECTRA_CONFIG_H_

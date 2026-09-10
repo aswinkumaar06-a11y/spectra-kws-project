@@ -31,6 +31,7 @@ static size_t s_tail = 0;
 static size_t s_available = 0;
 static uint32_t s_overrun_count = 0;
 static uint32_t s_dropped_samples = 0;
+static uint64_t s_total_samples_written = 0;
 static bool s_is_psram = false;
 
 #ifdef ESP_PLATFORM
@@ -96,6 +97,7 @@ int audio_ring_init(size_t capacity_samples) {
     s_available = 0;
     s_overrun_count = 0;
     s_dropped_samples = 0;
+    s_total_samples_written = 0;
 
     RING_UNLOCK();
     return 0;
@@ -161,6 +163,7 @@ size_t audio_ring_write(const int16_t* src, size_t n_samples) {
 
     s_head = (s_head + n_samples) % s_capacity;
     s_available += n_samples;
+    s_total_samples_written += n_samples;
 
     RING_UNLOCK();
     return n_samples;
@@ -241,8 +244,61 @@ void audio_ring_reset(void) {
     s_available = 0;
     s_overrun_count = 0;
     s_dropped_samples = 0;
+    s_total_samples_written = 0;
     if (s_buffer != NULL && s_capacity > 0) {
         memset(s_buffer, 0, s_capacity * sizeof(int16_t));
     }
     RING_UNLOCK();
+}
+
+size_t audio_ring_read_abs(uint64_t start_abs_idx, int16_t* dst, size_t n_samples) {
+    if (dst == NULL || n_samples == 0 || s_buffer == NULL || s_capacity == 0) {
+        return 0;
+    }
+
+    RING_LOCK();
+
+    uint64_t total_written = s_total_samples_written;
+    uint64_t oldest_avail = (total_written > s_capacity) ? (total_written - s_capacity) : 0;
+
+    // If requested range is entirely ahead of write pointer (underflow)
+    if (start_abs_idx >= total_written) {
+        RING_UNLOCK();
+        return 0;
+    }
+
+    // If requested start is older than resident circular history, skip stale samples
+    uint64_t read_start = start_abs_idx;
+    if (read_start < oldest_avail) {
+        read_start = oldest_avail;
+    }
+
+    // Number of resident samples available from read_start
+    uint64_t avail_from_start = total_written - read_start;
+    size_t samples_to_read = (n_samples < avail_from_start) ? n_samples : (size_t)avail_from_start;
+
+    if (samples_to_read == 0) {
+        RING_UNLOCK();
+        return 0;
+    }
+
+    // Map read_start to ring buffer index
+    size_t buf_idx = (size_t)(read_start % s_capacity);
+    size_t first_chunk = (s_capacity - buf_idx < samples_to_read) ? (s_capacity - buf_idx) : samples_to_read;
+    memcpy(dst, &s_buffer[buf_idx], first_chunk * sizeof(int16_t));
+
+    size_t second_chunk = samples_to_read - first_chunk;
+    if (second_chunk > 0) {
+        memcpy(dst + first_chunk, &s_buffer[0], second_chunk * sizeof(int16_t));
+    }
+
+    RING_UNLOCK();
+    return samples_to_read;
+}
+
+uint64_t audio_ring_get_total_written(void) {
+    RING_LOCK();
+    uint64_t total = s_total_samples_written;
+    RING_UNLOCK();
+    return total;
 }
