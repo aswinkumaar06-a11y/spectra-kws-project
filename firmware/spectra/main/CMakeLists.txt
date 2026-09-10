@@ -5,10 +5,11 @@ idf_component_register(
         "audio_ring.cc"
         "audio_capture.cc"
         "wav_injector.cc"
+        "mfcc.cc"
     INCLUDE_DIRS
         "."
     REQUIRES
         tflm
-        driver
         esp_driver_i2s
+        esp_timer
 )

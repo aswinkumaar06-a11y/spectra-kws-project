@@ -34,6 +34,8 @@
 #include "audio_ring.h"
 #include "audio_capture.h"
 #include "wav_injector.h"
+#include "mfcc.h"
+#include "esp_timer.h"
 
 static const char* TAG = "SPECTRA";
 
@@ -46,9 +48,11 @@ static const char* TAG = "SPECTRA";
 static uint8_t tensor_arena[SPECTRA_TENSOR_ARENA_SIZE]
     __attribute__((aligned(16), section(".bss")));
 
-// Working buffers for Phase 1 audio processing
+// Working buffers for Phase 1 audio processing & Phase 2 feature extraction
 static int16_t s_capture_block[SPECTRA_CAPTURE_BLOCK_SAMPLES];
 static int16_t s_audio_window[SPECTRA_WINDOW_SAMPLES];
+static float s_mfcc_float[SPECTRA_INPUT_HEIGHT * SPECTRA_INPUT_WIDTH];
+static int8_t s_mfcc_int8[SPECTRA_INPUT_HEIGHT * SPECTRA_INPUT_WIDTH];
 
 /**
  * Verify a single tensor dimension matches expected value.
@@ -186,11 +190,58 @@ static bool run_wav_injection_selftest(void) {
 }
 
 /**
- * Execute Phase 1: Ring Buffer Allocation, Verification & Audio Capture Loop.
+ * Run Phase 2 MFCC Feature Extraction self-test on target.
+ * Verifies silence energy gating and 440Hz synthetic signal extraction.
  */
-static void run_phase1_audio(void) {
+static bool run_mfcc_selftest(void) {
+    ESP_LOGI(TAG, "--- Starting MFCC Engine Self-Test ---");
+    mfcc_init();
+
+    // 1. Verify silence energy gate (must reject)
+    memset(s_audio_window, 0, sizeof(s_audio_window));
+    bool silence_voiced = mfcc_process_window(s_audio_window, s_mfcc_float, s_mfcc_int8);
+    if (silence_voiced) {
+        ESP_LOGE(TAG, "MFCC Self-Test FAIL: Silence not rejected by energy gate");
+        return false;
+    }
+    ESP_LOGI(TAG, "  [PASS] Silence correctly rejected by energy gate");
+
+    // 2. Verify synthetic voiced signal (440Hz sine wave, peak 0.8)
+    for (int i = 0; i < SPECTRA_WINDOW_SAMPLES; i++) {
+        float s = 0.8f * sinf(2.0f * (float)M_PI * 440.0f * (float)i / (float)SPECTRA_SAMPLE_RATE);
+        s_audio_window[i] = (int16_t)(s * 32767.0f);
+    }
+
+    int64_t t0 = esp_timer_get_time();
+    bool voiced = mfcc_process_window(s_audio_window, s_mfcc_float, s_mfcc_int8);
+    int64_t elapsed_us = esp_timer_get_time() - t0;
+
+    if (!voiced) {
+        ESP_LOGE(TAG, "MFCC Self-Test FAIL: 440Hz sine wave rejected by energy gate");
+        return false;
+    }
+
+    // Check for NaN or Inf in output
+    for (int i = 0; i < SPECTRA_INPUT_HEIGHT * SPECTRA_INPUT_WIDTH; i++) {
+        if (isnan(s_mfcc_float[i]) || isinf(s_mfcc_float[i])) {
+            ESP_LOGE(TAG, "MFCC Self-Test FAIL: NaN/Inf detected at index %d", i);
+            return false;
+        }
+    }
+
+    ESP_LOGI(TAG, "  [PASS] 440Hz sine processed in %lld us (~%.2f ms) | Features: %dx%d INT8",
+             (long long)elapsed_us, (float)elapsed_us / 1000.0f,
+             SPECTRA_INPUT_HEIGHT, SPECTRA_INPUT_WIDTH);
+    ESP_LOGI(TAG, "MFCC Engine Self-Test PASS: Gating and extraction operational");
+    return true;
+}
+
+/**
+ * Execute Phase 1 & 2: Ring Buffer, Audio Capture, and MFCC Feature Pipeline.
+ */
+static void run_pipeline_audio(void) {
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  Spectra KWS — Phase 1: Audio Capture");
+    ESP_LOGI(TAG, "  Spectra KWS — Phase 1 & 2: Audio & MFCC");
     ESP_LOGI(TAG, "  Target: XIAO ESP32-C5 | INMP441 I2S");
     ESP_LOGI(TAG, "========================================");
 
@@ -214,14 +265,21 @@ static void run_phase1_audio(void) {
     ESP_LOGI(TAG, "Ring Buffer Placement: %s",
              ring_stats.is_psram ? "PSRAM (External SPI RAM)" : "Internal SRAM");
 
-    // ── 2. Run deterministic injection verification ─────────────────────
+    // ── 2. Run deterministic injection verification (Phase 1) ───────────
     if (!run_wav_injection_selftest()) {
         ESP_LOGE(TAG, "Phase 1 FAIL — WAV injection test failed");
         led_steady_on();
         return;
     }
 
-    // ── 3. Initialize I2S Hardware Driver ───────────────────────────────
+    // ── 3. Run MFCC engine verification (Phase 2) ───────────────────────
+    if (!run_mfcc_selftest()) {
+        ESP_LOGE(TAG, "Phase 2 FAIL — MFCC self-test failed");
+        led_steady_on();
+        return;
+    }
+
+    // ── 4. Initialize I2S Hardware Driver ───────────────────────────────
     ESP_LOGI(TAG, "Configuring INMP441 I2S on BCLK=%d, WS=%d, DIN=%d",
              SPECTRA_I2S_BCLK_GPIO, SPECTRA_I2S_WS_GPIO, SPECTRA_I2S_DIN_GPIO);
 
@@ -236,11 +294,11 @@ static void run_phase1_audio(void) {
     }
 
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "Phase 1 PASS — Capture & Ring Operational");
-    ESP_LOGI(TAG, "Entering continuous audio ingestion loop...");
+    ESP_LOGI(TAG, "Phase 1 & 2 PASS — Capture, Ring & MFCC Operational");
+    ESP_LOGI(TAG, "Entering continuous audio & feature extraction loop...");
     ESP_LOGI(TAG, "========================================");
 
-    // ── 4. Continuous Streaming / Soak Telemetry Loop ───────────────────
+    // ── 5. Continuous Streaming / Feature Extraction Loop ───────────────
     uint64_t total_samples_captured = 0;
     uint32_t total_hops_processed = 0;
     uint32_t loop_count = 0;
@@ -279,14 +337,20 @@ static void run_phase1_audio(void) {
             float peak_norm = (float)peak / 32768.0f;
             float rms = sqrtf((float)sum_sq / SPECTRA_WINDOW_SAMPLES) / 32768.0f;
 
+            // Phase 2: Compute 40x32 MFCC Features + Energy Gating
+            int64_t t_start = esp_timer_get_time();
+            bool voiced = mfcc_process_window(s_audio_window, s_mfcc_float, s_mfcc_int8);
+            int64_t mfcc_us = esp_timer_get_time() - t_start;
+
             // Advance read pointer by 0.5s hop (50% overlap)
             audio_ring_advance(SPECTRA_HOP_SAMPLES);
 
             // Log telemetry every 10 hops (~5 seconds)
             if (total_hops_processed % 10 == 0) {
                 audio_ring_get_stats(&ring_stats);
-                ESP_LOGI(TAG, "[SOAK] Hops: %u | Samples: %llu | Peak: %.3f | RMS: %.4f | Overruns: %u",
-                         total_hops_processed, total_samples_captured, peak_norm, rms, ring_stats.overrun_count);
+                ESP_LOGI(TAG, "[SOAK] Hop: %u | Peak: %.3f | RMS: %.4f | Voiced: %s | MFCC: %lld us | Overruns: %u",
+                         total_hops_processed, peak_norm, rms,
+                         voiced ? "YES" : "NO", (long long)mfcc_us, ring_stats.overrun_count);
                 led_toggle(); // Heartbeat pulse
             }
 
@@ -444,6 +508,6 @@ extern "C" void app_main(void) {
     }
     ESP_LOGI(TAG, "========================================");
 
-    // ── Handover to Phase 1 Audio Capture Pipeline ──────────────────────
-    run_phase1_audio();
+    // ── Handover to Audio Capture & MFCC Feature Pipeline ──────────────
+    run_pipeline_audio();
 }

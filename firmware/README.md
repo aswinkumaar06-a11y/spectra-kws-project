@@ -18,7 +18,7 @@ Keyword spotting firmware for **Seeed Studio XIAO ESP32-C5** (RISC-V single-core
 | Model size | 39,552 bytes (~38.6 KB) |
 | Target Board | Seeed Studio XIAO ESP32-C5 |
 | User LED | GPIO 27 (active HIGH) |
-| I2S Mic (INMP441) | BCLK=GPIO23 (D4), WS=GPIO24 (D5), DIN=GPIO11 (D6) |
+| I2S Mic (INMP441) | BCLK=GPIO 1 (D0), WS=GPIO 0 (D1), DIN=GPIO 23 (D4) |
 
 ## Prerequisites
 
@@ -128,10 +128,21 @@ gcc -o test_model_array firmware/tests/test_model_array.c firmware/spectra/main/
 ./test_model_array
 ```
 
-### 4. C Audio Ring Buffer & WAV Injector Unit Test
+### 3. C Audio Ring Buffer & WAV Injector Unit Test
 ```bash
 gcc -o test_audio_ring firmware/tests/test_audio_ring.c firmware/spectra/main/audio_ring.cc firmware/spectra/main/wav_injector.cc -I firmware/spectra/main
 ./test_audio_ring
+```
+
+### 4. C MFCC Parity Host Regression Test (50 Clips & Edge Cases)
+```bash
+gcc -O3 -o test_mfcc_host firmware/tests/test_mfcc_host.c firmware/spectra/main/mfcc.cc -I firmware/spectra/main -lm
+./test_mfcc_host
+```
+
+### 5. Automated Python Table & MFCC Parity Test Suite
+```bash
+venv\Scripts\python.exe -m unittest firmware/tests/test_mfcc_parity.py
 ```
 
 ## Project Structure
@@ -144,13 +155,18 @@ firmware/
 │   ├── sdkconfig.defaults          ← XIAO ESP32-C5 config (IDF v5.5.2+, PSRAM enabled)
 │   ├── partitions.csv              ← NVS + app partition (no SPIFFS)
 │   ├── main/
-│   │   ├── CMakeLists.txt          ← Component registration with I2S driver
+│   │   ├── CMakeLists.txt          ← Component registration (I2S, TFLM, esp_timer)
 │   │   ├── Kconfig.projbuild       ← Menuconfig options (mic GPIOs, ring size, test switch)
-│   │   ├── main.cc                 ← Entry: TFLM verify + PSRAM ring init + capture loop
-│   │   ├── spectra_config.h        ← Frozen contract, GPIOs, ring constants
+│   │   ├── main.cc                 ← Entry: TFLM verify + PSRAM ring init + MFCC pipeline
+│   │   ├── spectra_config.h        ← Frozen contract, GPIOs, ring & MFCC constants
 │   │   ├── audio_capture.h/.cc     ← INMP441 I2S standard RX driver with DMA
 │   │   ├── audio_ring.h/.cc        ← PSRAM circular buffer with drop-oldest overrun policy
 │   │   ├── wav_injector.h/.cc      ← Deterministic synthetic test injector & CRC-32 engine
+│   │   ├── mfcc.h/.cc              ← C MFCC feature extraction engine (FFT, Mel, DCT)
+│   │   ├── hann_table.h            ← 1024-point periodic Hann window table
+│   │   ├── twiddle_table.h         ← 512-point complex twiddle factors table
+│   │   ├── mel_table.h             ← 128x513 sparse Slaney Mel filterbank CSR table
+│   │   ├── dct_table.h             ← 40x128 Type-II orthonormal DCT table
 │   │   ├── model_data.h            ← Model extern declarations
 │   │   └── model_data.cc           ← Model byte array (aligned)
 │   └── components/
@@ -162,7 +178,11 @@ firmware/
     ├── test_model_contract.py      ← Python contract validation
     ├── test_model_array.c          ← C model array validation
     ├── test_wav_injection.py       ← Python ring buffer & golden CRC generator
-    └── test_audio_ring.c           ← C circular ring unit test (26 test assertions)
+    ├── test_audio_ring.c           ← C circular ring unit test (26 test assertions)
+    ├── gen_mfcc_goldens.py         ← Golden table & 50-clip binary bundle generator
+    ├── mfcc_goldens.bin            ← 50-clip test bundle with Python ground truth
+    ├── test_mfcc_host.c            ← C host regression test (50 clips, gates, edge cases)
+    └── test_mfcc_parity.py         ← Python test suite asserting table math & C parity
 ```
 
 ## Firmware Phases
@@ -171,9 +191,10 @@ firmware/
 |---|---|---|---|
 | **0b** | **Target lock + Scaffold + Contract verification** | XIAO ESP32-C5, TFLM, LED proof | ✅ **Complete** |
 | **1** | **I2S audio capture + PSRAM ring buffer** | INMP441 microphone, 96 KB PSRAM ring | ✅ **Complete** |
-| 2 | MFCC feature extraction (C/DSP) | Fixed-point DSP engine | ⬜ Planned |
+| **2** | **MFCC feature extraction (C/DSP)** | 1024-pt FFT, 128 Mel, 40 DCT, INT8 | ✅ **Complete** |
 | 3 | Inference pipeline integration | Minimal op resolver + arena optimization | ⬜ Planned |
 | 4 | Energy gating + Wake logic | Threshold detection | ⬜ Planned |
 | 5 | Power optimization | Dynamic frequency scaling & sleep modes | ⬜ Planned |
 | 6 | OTA update support | Dual OTA partitions | ⬜ Planned |
 | 7 | Production hardening | Watchdog, brownout, fail-safe recovery | ⬜ Planned |
+

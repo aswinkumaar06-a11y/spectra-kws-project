@@ -22,9 +22,11 @@
 #define SPECTRA_AUDIO_BYTES       32000    // CLIP_SAMPLES * sizeof(int16_t)
 
 // ─── Phase 1: Capture & Ring Buffer ─────────────────────────────────────────
-#define SPECTRA_I2S_BCLK_GPIO     23       // D4 on XIAO ESP32-C5 (INMP441 SCK)
-#define SPECTRA_I2S_WS_GPIO       24       // D5 on XIAO ESP32-C5 (INMP441 WS)
-#define SPECTRA_I2S_DIN_GPIO      11       // D6 on XIAO ESP32-C5 (INMP441 SD)
+// R1: BCLK on D0 (GPIO 1), WS on D1 (GPIO 0), DIN on D4 (GPIO 23).
+// Frees GPIO 11 (U0TXD boot rom conflict) and keeps I2C pins unburned.
+#define SPECTRA_I2S_BCLK_GPIO     1        // D0 on XIAO ESP32-C5 (INMP441 SCK)
+#define SPECTRA_I2S_WS_GPIO       0        // D1 on XIAO ESP32-C5 (INMP441 WS)
+#define SPECTRA_I2S_DIN_GPIO      23       // D4 on XIAO ESP32-C5 (INMP441 SD)
 
 #define SPECTRA_RING_SECONDS      3        // 3-second ring buffer capacity
 #define SPECTRA_RING_CAPACITY     (SPECTRA_SAMPLE_RATE * SPECTRA_RING_SECONDS) // 48000 samples (96 KB)

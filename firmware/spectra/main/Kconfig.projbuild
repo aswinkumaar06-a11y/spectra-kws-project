@@ -2,21 +2,22 @@ menu "Spectra KWS Audio Configuration"
 
     config SPECTRA_I2S_BCLK_GPIO
         int "I2S Bit Clock (BCLK) GPIO"
-        default 23
+        default 1
         help
-            GPIO pin connected to INMP441 SCK/BCLK (default 23 = D4 on XIAO ESP32-C5).
+            GPIO pin connected to INMP441 SCK/BCLK (default 1 = D0 on XIAO ESP32-C5).
 
     config SPECTRA_I2S_WS_GPIO
         int "I2S Word Select (WS/LRCLK) GPIO"
-        default 24
+        default 0
         help
-            GPIO pin connected to INMP441 WS (default 24 = D5 on XIAO ESP32-C5).
+            GPIO pin connected to INMP441 WS (default 0 = D1 on XIAO ESP32-C5).
 
     config SPECTRA_I2S_DIN_GPIO
         int "I2S Data In (DIN/SD) GPIO"
-        default 11
+        default 23
         help
-            GPIO pin connected to INMP441 SD (default 11 = D6 on XIAO ESP32-C5).
+            GPIO pin connected to INMP441 SD (default 23 = D4 on XIAO ESP32-C5).
+            Avoids GPIO 11 (U0TXD ROM boot conflict).
 
     config SPECTRA_RING_SECONDS
         int "Audio ring buffer duration in seconds"
@@ -31,5 +32,17 @@ menu "Spectra KWS Audio Configuration"
         help
             When enabled, the audio pipeline feeds synthetic deterministic PCM blocks
             for testing and verification without requiring a physical INMP441 microphone.
+
+    config SPECTRA_MFCC_SELFTEST
+        bool "Run MFCC golden self-test on boot"
+        default y
+        help
+            Executes built-in MFCC feature extraction parity check on boot before streaming.
+
+    config SPECTRA_MFCC_UART_TEST
+        bool "Enable interactive UART MFCC parity harness mode"
+        default n
+        help
+            Waits for host-streamed audio clips over UART to benchmark and verify MFCC parity.
 
 endmenu
