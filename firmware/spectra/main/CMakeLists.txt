@@ -6,6 +6,8 @@ idf_component_register(
         "audio_capture.cc"
         "wav_injector.cc"
         "mfcc.cc"
+        "tflm.cc"
+        "logits_test.cc"
     INCLUDE_DIRS
         "."
     REQUIRES

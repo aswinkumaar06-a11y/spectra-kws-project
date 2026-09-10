@@ -68,6 +68,12 @@
 // Placement: BSS segment (internal SRAM), NOT stack.
 #define SPECTRA_TENSOR_ARENA_SIZE  (80 * 1024)  // 80 KB provisional
 
+// ─── Phase 3: Inference & Parity Constants ─────────────────────────────────
+#define SPECTRA_RESOLVER_OPS       5        // Minimal unique op count: CONV, DW_CONV, MEAN, FC, SOFTMAX
+#define SPECTRA_LOGITS_TOLERANCE   0.02f    // Gate: per-logit |Δ| <= 0.02 on all 50 clips
+#define SPECTRA_MAX_INFERENCE_MS   200.0f   // Soft budget per invoke @ 240 MHz (hop budget < 250 ms)
+#define SPECTRA_TARGET_SRAM_KB     256      // Internal SRAM budget discipline
+
 // Decision threshold for positive classification (post-dequantization).
 #define SPECTRA_POSITIVE_THRESHOLD 0.5f
 
@@ -75,6 +81,6 @@
 #define SPECTRA_MODEL_SIZE_BYTES   39552
 
 // ─── Board: XIAO ESP32-C5 ──────────────────────────────────────────────────
-#define SPECTRA_LED_GPIO           27      // Onboard LED (board-alive proof)
+#define SPECTRA_LED_GPIO           27       // Active HIGH
 
 #endif  // SPECTRA_CONFIG_H_

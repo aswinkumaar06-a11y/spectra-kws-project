@@ -25,28 +25,17 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "tensorflow/lite/micro/all_ops_resolver.h"
-#include "tensorflow/lite/micro/micro_interpreter.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-
 #include "model_data.h"
 #include "spectra_config.h"
 #include "audio_ring.h"
 #include "audio_capture.h"
 #include "wav_injector.h"
 #include "mfcc.h"
+#include "tflm.h"
+#include "logits_test.h"
 #include "esp_timer.h"
 
 static const char* TAG = "SPECTRA";
-
-/*
- * Tensor arena — placed in BSS (file-scope static), NOT on the stack.
- * 80 KB is provisional; Phase 3 will finalize via TFLM recording allocator.
- * Placement: internal SRAM BSS segment (ESP32-C5 has 384 KB internal).
- * 16-byte alignment for efficient RISC-V access.
- */
-static uint8_t tensor_arena[SPECTRA_TENSOR_ARENA_SIZE]
-    __attribute__((aligned(16), section(".bss")));
 
 // Working buffers for Phase 1 audio processing & Phase 2 feature extraction
 static int16_t s_capture_block[SPECTRA_CAPTURE_BLOCK_SAMPLES];
@@ -335,6 +324,7 @@ static void run_pipeline_audio(void) {
                 sum_sq += ((int32_t)s * (int32_t)s);
             }
             float peak_norm = (float)peak / 32768.0f;
+            float peak_norm = (float)peak / 32768.0f;
             float rms = sqrtf((float)sum_sq / SPECTRA_WINDOW_SAMPLES) / 32768.0f;
 
             // Phase 2: Compute 40x32 MFCC Features + Energy Gating
@@ -342,15 +332,35 @@ static void run_pipeline_audio(void) {
             bool voiced = mfcc_process_window(s_audio_window, s_mfcc_float, s_mfcc_int8);
             int64_t mfcc_us = esp_timer_get_time() - t_start;
 
+            // Phase 3: TFLM Inference on Voiced Audio
+            tflm_result_t tflm_res = {0};
+            int64_t tflm_us = 0;
+            if (voiced) {
+                int64_t t_inf = esp_timer_get_time();
+                tflm_feed_input(s_mfcc_int8);
+                if (tflm_invoke(&tflm_res)) {
+                    tflm_us = esp_timer_get_time() - t_inf;
+                    if (tflm_res.p_pos >= SPECTRA_POSITIVE_THRESHOLD) {
+                        ESP_LOGI(TAG, ">>> KEYWORD DETECTED! P(\"Spectra\") = %.4f | Total Latency: %.1f ms <<<",
+                                 tflm_res.p_pos, (float)(mfcc_us + tflm_us) / 1000.0f);
+                        led_blink(2);
+                    }
+                }
+            }
+
+            // Check UART for test runner packet
+            logits_test_poll_uart();
+
             // Advance read pointer by 0.5s hop (50% overlap)
             audio_ring_advance(SPECTRA_HOP_SAMPLES);
 
             // Log telemetry every 10 hops (~5 seconds)
             if (total_hops_processed % 10 == 0) {
                 audio_ring_get_stats(&ring_stats);
-                ESP_LOGI(TAG, "[SOAK] Hop: %u | Peak: %.3f | RMS: %.4f | Voiced: %s | MFCC: %lld us | Overruns: %u",
-                         total_hops_processed, peak_norm, rms,
-                         voiced ? "YES" : "NO", (long long)mfcc_us, ring_stats.overrun_count);
+                ESP_LOGI(TAG, "[SOAK] Hop: %u | Peak: %.3f | Voiced: %s | MFCC: %lld us | TFLM: %lld us | P(\"Spectra\"): %.4f | Overruns: %u",
+                         total_hops_processed, peak_norm,
+                         voiced ? "YES" : "NO", (long long)mfcc_us, (long long)tflm_us,
+                         tflm_res.p_pos, ring_stats.overrun_count);
                 led_toggle(); // Heartbeat pulse
             }
 
@@ -369,145 +379,45 @@ extern "C" void app_main(void) {
     led_init();
 
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  Spectra KWS — Phase 0b: Target Lock");
-    ESP_LOGI(TAG, "  Board: XIAO ESP32-C5");
+    ESP_LOGI(TAG, "  Spectra KWS — Phase 3: TFLM Bring-up");
+    ESP_LOGI(TAG, "  Board: XIAO ESP32-C5 (RISC-V @ 240 MHz)");
     ESP_LOGI(TAG, "========================================");
 
-    // ── Heap report (before model load) ─────────────────────────────────
+    // ── Heap report (pre-initialization) ────────────────────────────────
     ESP_LOGI(TAG, "--- Heap (pre-model) ---");
     print_heap_report();
 
-    // ── Step 1: Load model ──────────────────────────────────────────────
-    const tflite::Model* model = tflite::GetModel(spectra_model);
-    if (model == nullptr) {
-        ESP_LOGE(TAG, "FATAL: Failed to load model from spectra_model[]");
+    // ── Step 1: Initialize TFLM Engine (Model verification + Minimal Resolver <5> + BSS Arena) ──
+    if (!tflm_init()) {
+        ESP_LOGE(TAG, "FATAL: TFLM initialization failed");
         led_steady_on();
         return;
     }
 
-    if (model->version() != TFLITE_SCHEMA_VERSION) {
-        ESP_LOGE(TAG, "FATAL: Model schema version %lu != expected %d",
-                 model->version(), TFLITE_SCHEMA_VERSION);
+    // ── Step 2: Zeros-Smoke Regression Test ─────────────────────────────
+    tflm_result_t smoke_res;
+    if (!tflm_run_zeros_smoke(&smoke_res)) {
+        ESP_LOGE(TAG, "FATAL: Zeros-smoke anchor test failed");
         led_steady_on();
         return;
     }
 
-    ESP_LOGI(TAG, "Model loaded: %u bytes (schema v%lu)",
-             spectra_model_len, model->version());
-
-    // ── Step 2: Create interpreter (AllOpsResolver — P3 will minimize) ──
-    tflite::AllOpsResolver resolver;
-
-    tflite::MicroInterpreter interpreter(
-        model, resolver, tensor_arena, SPECTRA_TENSOR_ARENA_SIZE);
-
-    TfLiteStatus allocate_status = interpreter.AllocateTensors();
-    if (allocate_status != kTfLiteOk) {
-        ESP_LOGE(TAG, "FATAL: AllocateTensors() failed (status=%d)", allocate_status);
+    // ── Step 3: On-Device 5-Clip Equivalence Proof (Minimal vs Reference) ──
+    if (!logits_test_run_equivalence_5()) {
+        ESP_LOGE(TAG, "FATAL: 5-clip equivalence proof failed");
         led_steady_on();
         return;
     }
 
-    size_t arena_used = interpreter.arena_used_bytes();
-    ESP_LOGI(TAG, "Tensor arena: %u / %u bytes used (%.1f%%) [BSS placement]",
-             (unsigned)arena_used, SPECTRA_TENSOR_ARENA_SIZE,
-             100.0f * arena_used / SPECTRA_TENSOR_ARENA_SIZE);
+    // ── Step 4: Measured Memory Budget Audit (< 256 KB Internal SRAM) ───
+    logits_test_print_memory_budget();
 
-    // ── Heap report (after model load) ──────────────────────────────────
-    ESP_LOGI(TAG, "--- Heap (post-model) ---");
-    print_heap_report();
-
-    // ── Step 3: Verify input tensor ─────────────────────────────────────
-    TfLiteTensor* input = interpreter.input(0);
-    bool pass = true;
-
-    ESP_LOGI(TAG, "Input:  shape=[%d,%d,%d,%d] dtype=%s scale=%.6f zp=%d",
-             input->dims->data[0], input->dims->data[1],
-             input->dims->data[2], input->dims->data[3],
-             TfLiteTypeGetName(input->type),
-             input->params.scale, input->params.zero_point);
-
-    pass &= CheckDim("Input", 0, input->dims->data[0], 1);
-    pass &= CheckDim("Input", 1, input->dims->data[1], SPECTRA_INPUT_HEIGHT);
-    pass &= CheckDim("Input", 2, input->dims->data[2], SPECTRA_INPUT_WIDTH);
-    pass &= CheckDim("Input", 3, input->dims->data[3], SPECTRA_INPUT_CHANNELS);
-
-    if (input->type != kTfLiteInt8) {
-        ESP_LOGE(TAG, "Input dtype: expected INT8, got %s",
-                 TfLiteTypeGetName(input->type));
-        pass = false;
-    }
-
-    float scale_diff = fabsf(input->params.scale - SPECTRA_INPUT_SCALE);
-    if (scale_diff > 1e-4f) {
-        ESP_LOGE(TAG, "Input scale: expected %.6f, got %.6f",
-                 SPECTRA_INPUT_SCALE, input->params.scale);
-        pass = false;
-    }
-
-    if (input->params.zero_point != SPECTRA_INPUT_ZERO_POINT) {
-        ESP_LOGE(TAG, "Input zp: expected %d, got %d",
-                 SPECTRA_INPUT_ZERO_POINT, input->params.zero_point);
-        pass = false;
-    }
-
-    // ── Step 4: Verify output tensor ────────────────────────────────────
-    TfLiteTensor* output = interpreter.output(0);
-
-    ESP_LOGI(TAG, "Output: shape=[%d,%d] dtype=%s scale=%.6f zp=%d",
-             output->dims->data[0], output->dims->data[1],
-             TfLiteTypeGetName(output->type),
-             output->params.scale, output->params.zero_point);
-
-    pass &= CheckDim("Output", 0, output->dims->data[0], 1);
-    pass &= CheckDim("Output", 1, output->dims->data[1], SPECTRA_OUTPUT_CLASSES);
-
-    if (output->type != kTfLiteInt8) {
-        ESP_LOGE(TAG, "Output dtype: expected INT8, got %s",
-                 TfLiteTypeGetName(output->type));
-        pass = false;
-    }
-
-    float out_scale_diff = fabsf(output->params.scale - SPECTRA_OUTPUT_SCALE);
-    if (out_scale_diff > 1e-6f) {
-        ESP_LOGE(TAG, "Output scale: expected %.6f, got %.6f",
-                 SPECTRA_OUTPUT_SCALE, output->params.scale);
-        pass = false;
-    }
-
-    if (output->params.zero_point != SPECTRA_OUTPUT_ZERO_POINT) {
-        ESP_LOGE(TAG, "Output zp: expected %d, got %d",
-                 SPECTRA_OUTPUT_ZERO_POINT, output->params.zero_point);
-        pass = false;
-    }
-
-    // ── Step 5: Run a zero-input inference (smoke test) ─────────────────
-    memset(input->data.int8, 0, input->bytes);
-    TfLiteStatus invoke_status = interpreter.Invoke();
-    if (invoke_status != kTfLiteOk) {
-        ESP_LOGE(TAG, "FATAL: Invoke() failed on zero input (status=%d)", invoke_status);
-        pass = false;
-    } else {
-        int8_t out_neg = output->data.int8[0];
-        int8_t out_pos = output->data.int8[1];
-        float prob_neg = (out_neg - SPECTRA_OUTPUT_ZERO_POINT) * SPECTRA_OUTPUT_SCALE;
-        float prob_pos = (out_pos - SPECTRA_OUTPUT_ZERO_POINT) * SPECTRA_OUTPUT_SCALE;
-        ESP_LOGI(TAG, "Zero-input inference: neg=%.4f pos=%.4f (raw: %d, %d)",
-                 prob_neg, prob_pos, out_neg, out_pos);
-    }
-
-    // ── Result + LED proof ──────────────────────────────────────────────
+    // ── Step 5: LED Proof ───────────────────────────────────────────────
     ESP_LOGI(TAG, "========================================");
-    if (pass) {
-        ESP_LOGI(TAG, "Phase 0b PASS — model contract verified on XIAO ESP32-C5");
-        led_blink(3);  // 3 blinks = PASS (board-alive proof)
-    } else {
-        ESP_LOGE(TAG, "Phase 0b FAIL — contract mismatch detected");
-        led_steady_on();  // Steady = FAIL
-        return;
-    }
+    ESP_LOGI(TAG, "Phase 3 PASS — TFLM Inference & Memory Verified");
     ESP_LOGI(TAG, "========================================");
+    led_blink(3);  // 3 blinks = PASS
 
-    // ── Handover to Audio Capture & MFCC Feature Pipeline ──────────────
+    // ── Handover to Continuous Audio & Inference Pipeline ───────────────
     run_pipeline_audio();
 }

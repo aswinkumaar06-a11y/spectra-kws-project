@@ -46,3 +46,29 @@ menu "Spectra KWS Audio Configuration"
             Waits for host-streamed audio clips over UART to benchmark and verify MFCC parity.
 
 endmenu
+
+menu "Spectra KWS TFLM Inference Configuration"
+
+    config SPECTRA_USE_ALLOPS
+        bool "Use AllOpsResolver (Debug only, increases binary size)"
+        default n
+        help
+            When enabled, TFLM uses AllOpsResolver instead of the minimal
+            MicroMutableOpResolver<5> (CONV_2D, DEPTHWISE_CONV_2D, MEAN, FC, SOFTMAX).
+
+    config SPECTRA_ARENA_KB
+        int "Tensor Arena size in KB (Internal SRAM BSS)"
+        default 80
+        range 40 128
+        help
+            Size of the static tensor arena allocated in internal SRAM BSS segment.
+            Default 80 KB. Recording allocator measures exact used bytes on boot.
+
+    config SPECTRA_EQUIVALENCE_BOOT_TEST
+        bool "Run 5-clip equivalence proof on boot"
+        default y
+        help
+            Executes autonomous on-device test evaluating 5 embedded golden clips
+            asserting bit-identical logits and classification accuracy.
+
+endmenu

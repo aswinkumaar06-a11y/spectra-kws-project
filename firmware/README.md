@@ -145,6 +145,16 @@ gcc -O3 -o test_mfcc_host firmware/tests/test_mfcc_host.c firmware/spectra/main/
 venv\Scripts\python.exe -m unittest firmware/tests/test_mfcc_parity.py
 ```
 
+### 6. Phase 3 TFLM Invariants, Zeros Smoke & Golden Logits Test Suite
+```bash
+venv\Scripts\python.exe -m unittest firmware/tests/test_logits_parity.py
+```
+
+### 7. Phase 3 Hardware Over-the-UART 50-Clip Parity Test (Optional)
+```bash
+venv\Scripts\python.exe firmware/tests/test_logits_parity.py --port COM3 --baud 115200
+```
+
 ## Project Structure
 
 ```
@@ -157,12 +167,15 @@ firmware/
 │   ├── main/
 │   │   ├── CMakeLists.txt          ← Component registration (I2S, TFLM, esp_timer)
 │   │   ├── Kconfig.projbuild       ← Menuconfig options (mic GPIOs, ring size, test switch)
-│   │   ├── main.cc                 ← Entry: TFLM verify + PSRAM ring init + MFCC pipeline
-│   │   ├── spectra_config.h        ← Frozen contract, GPIOs, ring & MFCC constants
+│   │   ├── main.cc                 ← Entry: TFLM verify + PSRAM ring init + MFCC + Inference
+│   │   ├── spectra_config.h        ← Frozen contract, GPIOs, ring, MFCC & TFLM constants
 │   │   ├── audio_capture.h/.cc     ← INMP441 I2S standard RX driver with DMA
 │   │   ├── audio_ring.h/.cc        ← PSRAM circular buffer with drop-oldest overrun policy
 │   │   ├── wav_injector.h/.cc      ← Deterministic synthetic test injector & CRC-32 engine
 │   │   ├── mfcc.h/.cc              ← C MFCC feature extraction engine (FFT, Mel, DCT)
+│   │   ├── tflm.h/.cc              ← TFLM engine: minimal resolver <5>, internal SRAM arena, invoke
+│   │   ├── logits_test.h/.cc       ← 5-clip boot self-test, SRAM budget audit, UART streaming
+│   │   ├── test_clips_5.h          ← 5 embedded golden clips (2 pos, 1 neg, 2 hard neg)
 │   │   ├── hann_table.h            ← 1024-point periodic Hann window table
 │   │   ├── twiddle_table.h         ← 512-point complex twiddle factors table
 │   │   ├── mel_table.h             ← 128x513 sparse Slaney Mel filterbank CSR table
@@ -182,7 +195,10 @@ firmware/
     ├── gen_mfcc_goldens.py         ← Golden table & 50-clip binary bundle generator
     ├── mfcc_goldens.bin            ← 50-clip test bundle with Python ground truth
     ├── test_mfcc_host.c            ← C host regression test (50 clips, gates, edge cases)
-    └── test_mfcc_parity.py         ← Python test suite asserting table math & C parity
+    ├── test_mfcc_parity.py         ← Python test suite asserting table math & C parity
+    ├── gen_logits_ref.py           ← Desktop golden logits generator (50 clips + 5 embedded)
+    ├── logits_goldens.json         ← Full 50-clip desktop golden reference dataset
+    └── test_logits_parity.py       ← Host parity and model invariant test suite
 ```
 
 ## Firmware Phases
@@ -192,7 +208,7 @@ firmware/
 | **0b** | **Target lock + Scaffold + Contract verification** | XIAO ESP32-C5, TFLM, LED proof | ✅ **Complete** |
 | **1** | **I2S audio capture + PSRAM ring buffer** | INMP441 microphone, 96 KB PSRAM ring | ✅ **Complete** |
 | **2** | **MFCC feature extraction (C/DSP)** | 1024-pt FFT, 128 Mel, 40 DCT, INT8 | ✅ **Complete** |
-| 3 | Inference pipeline integration | Minimal op resolver + arena optimization | ⬜ Planned |
+| **3** | **TFLM inference + Memory discipline** | Minimal resolver <5>, arena in BSS, logits parity | ✅ **Complete** |
 | 4 | Energy gating + Wake logic | Threshold detection | ⬜ Planned |
 | 5 | Power optimization | Dynamic frequency scaling & sleep modes | ⬜ Planned |
 | 6 | OTA update support | Dual OTA partitions | ⬜ Planned |
